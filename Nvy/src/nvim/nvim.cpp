@@ -19,7 +19,7 @@ void ProcessMPackResponse(HWND hwnd, NvimMethod method, mpack_node_t params) {
 void ProcessMPackNotification(HWND hwnd, NvimInboundNotification notification, mpack_node_t params) {
 	switch (notification) {
 	case NvimInboundNotification::redraw: {
-		mpack_node_print_to_stdout(params);
+		//mpack_node_print_to_stdout(params);
 	} break;
 	}
 }
@@ -73,27 +73,12 @@ DWORD WINAPI NvimMessageHandler(LPVOID param) {
 		}
 
 		ProcessMPackResult(mpack_tree_root(&tree), nvim);
-		//MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach, 200, 100, MPACK_MAP(1, "ext_linegrid", true));
 	}
 
 	printf("Nvim Message Handler Died\n");
+	mpack_tree_destroy(&tree);
 	return 0;
 }
-
-//DWORD WINAPI NvimMessageHandler(LPVOID param) {
-//	Nvim *nvim = reinterpret_cast<Nvim *>(param);
-//	for (;;) {
-//		void *buffer = malloc(1024 * 1024);
-//
-//		DWORD bytes_read;
-//		BOOL b = ReadFile(nvim->stdout_read, buffer, 1024 * 1024, &bytes_read, nullptr);
-//		assert(b);
-//
-//		printf("Bytes read: %i\n", bytes_read);
-//
-//		PostMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(buffer), bytes_read);
-//	}
-//}
 
 void NvimInitialize(HWND hwnd, Nvim *nvim) {
 	nvim->hwnd = hwnd;
@@ -140,6 +125,7 @@ void NvimInitialize(HWND hwnd, Nvim *nvim) {
 	);
 
 	MPackSendRequest(nvim, NvimMethod::vim_get_api_info);
+
 }
 
 void NvimShutdown(Nvim *nvim) {
@@ -153,26 +139,16 @@ void NvimShutdown(Nvim *nvim) {
 }
 
 void NvimUIAttach(Nvim *nvim) {
-	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach, 200, 100, MPACK_MAP(1, "ext_linegrid", true));
-}
-
-void NvimProcessResult(NvimMethod method_name, mpack_node_t result, Nvim *nvim) {
-	switch (method_name) {
-	case NvimMethod::vim_get_api_info: {
-		mpack_node_t top_level_map = mpack_node_array_at(result, 1);
-		mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
-		nvim->api_level = mpack_node_map_cstr(version_map, "api_level").data->value.u;
-		MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach, 200, 100, MPACK_MAP(1, "ext_linegrid", true));
-
-	} break;
-	}
-}
-
-void NvimProcessNotification(NvimInboundNotification notification_name, mpack_node_t result, Nvim *nvim) {
-	switch (notification_name) {
-	case NvimInboundNotification::redraw: {
-		mpack_node_print_to_stdout(result);
-		__debugbreak();
-	} break;
-	}
+	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach,
+		[](mpack_writer_t *writer) {
+			mpack_start_array(writer, 3);
+			mpack_write_int(writer, 200);
+			mpack_write_int(writer, 100);
+			mpack_start_map(writer, 1);
+			mpack_write_cstr(writer, "ext_linegrid");
+			mpack_write_true(writer);
+			mpack_finish_map(writer);
+			mpack_finish_array(writer);
+		}
+	);
 }

@@ -42,6 +42,3 @@ void NvimInitialize(HWND hwnd, Nvim *nvim);
 void NvimShutdown(Nvim *nvim);
 
 void NvimUIAttach(Nvim *nvim);
-
-void NvimProcessMessage(void *buffer, uint32_t size, Nvim *nvim);
-
