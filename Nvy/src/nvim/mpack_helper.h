@@ -1,11 +1,9 @@
 #pragma once
 #include <windows.h>
+#include <functional>
 #include "mpack/mpack.h"
 
-using ParamCallback = void(mpack_writer_t *writer);
-void MPackSendRequest(Nvim *nvim, NvimMethod method, ParamCallback *Callback = nullptr) {
-	std::lock_guard<std::mutex> guard(nvim->msgid_mutex);
-
+void MPackSendRequest(Nvim *nvim, NvimMethod method, std::function<void(mpack_writer_t *writer)> Callback = nullptr) {
 	char *data;
 	size_t size;
 	mpack_writer_t writer;
@@ -13,8 +11,8 @@ void MPackSendRequest(Nvim *nvim, NvimMethod method, ParamCallback *Callback = n
 
 	mpack_start_array(&writer, 4);
 	mpack_write_i64(&writer, 0);
-	mpack_write_i64(&writer, nvim->current_msgid++);
-	nvim->msgid_to_method.push_back(method);
+	mpack_write_i64(&writer, nvim->current_msg_id++);
+	nvim->msg_id_to_method.push_back(method);
 	mpack_write_cstr(&writer, NVIM_METHOD_NAMES[method]);
 
 	if (Callback) {
@@ -39,9 +37,7 @@ void MPackSendRequest(Nvim *nvim, NvimMethod method, ParamCallback *Callback = n
 	free(data);
 }
 
-void MPackSendNotification(Nvim *nvim, NvimOutboundNotification notification, ParamCallback *Callback = nullptr) {
-	std::lock_guard<std::mutex> guard(nvim->msgid_mutex);
-
+void MPackSendNotification(Nvim *nvim, NvimOutboundNotification notification, std::function<void(mpack_writer_t *writer)> Callback = nullptr) {
 	char *data;
 	size_t size;
 	mpack_writer_t writer;

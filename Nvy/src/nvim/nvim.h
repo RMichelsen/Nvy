@@ -4,14 +4,12 @@ enum class NvimMessageType {
 	Response = 1,
 	Notification = 2
 };
-
 enum NvimMethod : uint8_t {
-	vim_get_api_info = 0
+	vim_get_api_info
 };
 constexpr const char *NVIM_METHOD_NAMES[] {
 	"vim_get_api_info"
 };
-
 enum NvimOutboundNotification : uint8_t {
 	nvim_ui_attach
 };
@@ -19,16 +17,11 @@ constexpr const char *NVIM_OUTBOUND_NOTIFICATION_NAMES[] {
 	"nvim_ui_attach"
 };
 
-enum class NvimInboundNotification : uint8_t {
-	redraw
-};
-
 struct Nvim {
 	uint64_t api_level;
 
-	std::mutex msgid_mutex;
-	uint32_t current_msgid;
-	std::vector<NvimMethod> msgid_to_method;
+	uint32_t current_msg_id;
+	std::vector<NvimMethod> msg_id_to_method;
 
 	HWND hwnd;
 	HANDLE stdin_read;
@@ -38,7 +31,7 @@ struct Nvim {
 	PROCESS_INFORMATION process_info;
 };
 
-void NvimInitialize(HWND hwnd, Nvim *nvim);
+void NvimInitialize(Nvim *nvim, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
-void NvimUIAttach(Nvim *nvim);
+void NvimUIAttach(Nvim *nvim, uint32_t grid_width, uint32_t grid_height);

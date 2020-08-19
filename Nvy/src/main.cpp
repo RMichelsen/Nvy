@@ -1,9 +1,49 @@
 #include "pch.h"
 #include "nvim/nvim.h"
+#include "renderer/renderer.h"
 
 struct Context {
 	Nvim *nvim;
+	Renderer *renderer;
 };
+
+void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
+	mpack_node_t root = mpack_tree_root(tree);
+
+	NvimMessageType message_type = static_cast<NvimMessageType>(mpack_node_array_at(root, 0).data->value.i);
+
+	if (message_type == NvimMessageType::Response) {
+		uint64_t msg_id = mpack_node_array_at(root, 1).data->value.u;
+
+		// TODO: handle error
+		assert(mpack_node_array_at(root, 2).data->type == mpack_type_nil);
+		mpack_node_t result = mpack_node_array_at(root, 3);
+
+		assert(context->nvim->msg_id_to_method.size() >= msg_id);
+		switch (context->nvim->msg_id_to_method[msg_id]) {
+		case NvimMethod::vim_get_api_info: {
+			mpack_node_t top_level_map = mpack_node_array_at(result, 1);
+			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
+			context->nvim->api_level = mpack_node_map_cstr(version_map, "api_level").data->value.u;
+			NvimUIAttach(context->nvim, context->renderer->grid_width, context->renderer->grid_height);
+		} break;
+		}
+	}
+	else if (message_type == NvimMessageType::Notification) {
+		assert(mpack_node_array_at(root, 1).data->type == mpack_type_str);
+		const char *str = mpack_node_str(mpack_node_array_at(root, 1));
+		int strlen = static_cast<int>(mpack_node_strlen(mpack_node_array_at(root, 1)));
+		printf("Received notification %.*s\n", strlen, str);
+		mpack_node_t params = mpack_node_array_at(root, 2);
+
+		if (!strncmp(str, "redraw", strlen)) {
+			RendererRedraw(context->renderer, params);
+		}
+	}
+
+	mpack_tree_destroy(tree);
+	free(tree);
+}
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	Context *context = reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
@@ -25,9 +65,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_DESTROY: {
 		PostQuitMessage(0);
 	} return 0;
-	case WM_NVIM_SET_API_LEVEL: {
-		context->nvim->api_level = wparam;
-		NvimUIAttach(context->nvim);
+	case WM_NVIM_MESSAGE: {
+		mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
+		ProcessMPackMessage(context, tree);
+
+		//context->nvim->api_level = wparam;
+		//NvimUIAttach(context->nvim, context->renderer->grid_width, context->renderer->grid_height);
 		//void *buffer = reinterpret_cast<void *>(wparam);
 		//uint32_t size = static_cast<uint32_t>(lparam);
 		//NvimProcessMessage(buffer, size, context->nvim);
@@ -105,23 +148,24 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	if (hwnd == NULL) return 1;
 	ShowWindow(hwnd, n_cmd_show);
 
-	//Renderer renderer {};
-	//InitializeRenderer(&renderer, instance, hwnd);
+	Renderer renderer {};
+	RendererInitialize(&renderer, hwnd, L"Consolas", 20.0f);
 
+	Nvim nvim {};
+	NvimInitialize(&nvim, hwnd);
 
-	
-	Nvim nvim;
-	NvimInitialize(hwnd, &nvim);
 	Context context {
-		.nvim = &nvim
+		.nvim = &nvim,
+		.renderer = &renderer
 	};
-
 	SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&context));
 
 	MSG msg;
 	while (GetMessage(&msg, 0, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
+
+		RendererDraw(&renderer);
 	}
 
 	//CoUninitialize();
