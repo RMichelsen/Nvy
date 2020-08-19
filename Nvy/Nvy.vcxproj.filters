@@ -38,13 +38,13 @@
     <ClInclude Include="src\nvim\nvim.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\nvim\mpack_helper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="dependencies\mpack\include\mpack\mpack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\mpack_helper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

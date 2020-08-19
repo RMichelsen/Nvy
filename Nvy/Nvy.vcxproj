@@ -177,7 +177,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dependencies\mpack\include\mpack\mpack.h" />
-    <ClInclude Include="src\nvim\mpack_helper.h" />
+    <ClInclude Include="src\common\mpack_helper.h" />
     <ClInclude Include="src\nvim\nvim.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\renderer\renderer.h" />

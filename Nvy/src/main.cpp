@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "common/mpack_helper.h"
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
 
@@ -30,13 +31,10 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 		}
 	}
 	else if (message_type == NvimMessageType::Notification) {
-		assert(mpack_node_array_at(root, 1).data->type == mpack_type_str);
-		const char *str = mpack_node_str(mpack_node_array_at(root, 1));
-		int strlen = static_cast<int>(mpack_node_strlen(mpack_node_array_at(root, 1)));
-		printf("Received notification %.*s\n", strlen, str);
+		mpack_node_t name = mpack_node_array_at(root, 1);
 		mpack_node_t params = mpack_node_array_at(root, 2);
 
-		if (!strncmp(str, "redraw", strlen)) {
+		if (MPackMatchString(name, "redraw")) {
 			RendererRedraw(context->renderer, params);
 		}
 	}
@@ -68,13 +66,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_NVIM_MESSAGE: {
 		mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
 		ProcessMPackMessage(context, tree);
-
-		//context->nvim->api_level = wparam;
-		//NvimUIAttach(context->nvim, context->renderer->grid_width, context->renderer->grid_height);
-		//void *buffer = reinterpret_cast<void *>(wparam);
-		//uint32_t size = static_cast<uint32_t>(lparam);
-		//NvimProcessMessage(buffer, size, context->nvim);
-		//free(buffer);
 	} return 0;
 	//case WM_CHAR:
 	//	if (wparam >= 0x20 && wparam <= 0x7E && ImGui::GetCurrentContext()) {
@@ -115,8 +106,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	OpenConsole();
 	//WIN_CHECK(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
 
-	const wchar_t *window_class_name = L"Explora_Class";
-	const wchar_t *window_title = L"Explora";
+	const wchar_t *window_class_name = L"Nvy_Class";
+	const wchar_t *window_title = L"Nvy";
 
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
@@ -164,8 +155,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	while (GetMessage(&msg, 0, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
-
-		RendererDraw(&renderer);
 	}
 
 	//CoUninitialize();
