@@ -17,21 +17,6 @@ struct HighlightAttribute {
 	uint16_t flags;
 };
 
-enum class DrawingEffectType {
-	Color,
-	Italic,
-	Bold,
-	Strikethrough,
-	Underline,
-	Undercurl
-};
-
-struct DrawingEffect {
-	HighlightAttributeFlags flags;
-	DWRITE_TEXT_RANGE text_range;
-	ID2D1SolidColorBrush *brush;
-};
-
 struct Renderer {
 	ID2D1Factory *d2d_factory;
 	ID2D1HwndRenderTarget *render_target;
@@ -60,5 +45,3 @@ void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta);
 void RendererUpdateFontMetrics(Renderer *renderer);
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
-
-void RendererDraw(Renderer *renderer);

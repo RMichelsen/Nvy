@@ -15,6 +15,7 @@ void MPackSendRequest(Nvim *nvim, NvimMethod method, std::function<void(mpack_wr
 	nvim->msg_id_to_method.push_back(method);
 	mpack_write_cstr(&writer, NVIM_METHOD_NAMES[method]);
 
+	// TODO: REDO
 	if (Callback) {
 		Callback(&writer);
 	}
@@ -47,6 +48,7 @@ void MPackSendNotification(Nvim *nvim, NvimOutboundNotification notification, st
 	mpack_write_i64(&writer, 2);
 	mpack_write_cstr(&writer, NVIM_OUTBOUND_NOTIFICATION_NAMES[notification]);
 
+	// TODO: REDO
 	if (Callback) {
 		Callback(&writer);
 	}
@@ -95,6 +97,7 @@ DWORD WINAPI NvimMessageHandler(LPVOID param) {
 		PostMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(tree), 0);
 	}
 
+	// TODO: Error handle
 	printf("Nvim Message Handler Died\n");
 	return 0;
 }
@@ -126,7 +129,7 @@ void NvimInitialize(Nvim *nvim, HWND hwnd) {
 		.hStdError = nvim->stdout_write
 	};
 
-	wchar_t command_line[] = L"nvim --embed C:/Users/Rasmus/Desktop/msgpack-c/src/unpack.c";
+	wchar_t command_line[] = L"nvim --embed";
 	CreateProcess(
 		nullptr,
 		command_line,
@@ -174,6 +177,26 @@ void NvimUIAttach(Nvim *nvim, uint32_t grid_width, uint32_t grid_height) {
 			mpack_write_cstr(writer, "ext_linegrid");
 			mpack_write_true(writer);
 			mpack_finish_map(writer);
+			mpack_finish_array(writer);
+		}
+	);
+}
+
+void NvimSendInput(Nvim *nvim, char input_char) {
+	MPackSendRequest(nvim, NvimMethod::nvim_input,
+		[=](mpack_writer_t *writer) {
+			mpack_start_array(writer, 1);
+			mpack_write_str(writer, &input_char, 1);
+			mpack_finish_array(writer);
+		}
+	);
+}
+
+void NvimSendInput(Nvim *nvim, const char *input_string) {
+	MPackSendRequest(nvim, NvimMethod::nvim_input,
+		[=](mpack_writer_t *writer) {
+			mpack_start_array(writer, 1);
+			mpack_write_cstr(writer, input_string);
 			mpack_finish_array(writer);
 		}
 	);

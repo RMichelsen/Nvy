@@ -67,11 +67,66 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
 		ProcessMPackMessage(context, tree);
 	} return 0;
-	//case WM_CHAR:
-	//	if (wparam >= 0x20 && wparam <= 0x7E && ImGui::GetCurrentContext()) {
-	//		ImGui::GetIO().AddInputCharacter(static_cast<char>(wparam));
-	//	}
-	//	return 0;
+	case WM_CHAR: {
+		// Special case for <LT>
+		if (wparam == 0x3C) {
+			NvimSendInput(context->nvim, "<LT>");
+		}
+		else if (wparam >= 0x20 && wparam <= 0x7E) {
+			NvimSendInput(context->nvim, static_cast<char>(wparam));
+		}
+	} return 0;
+	case WM_KEYDOWN: {
+		std::string input_string = "<";
+
+		if ((GetKeyState(VK_SHIFT) & 0x80) != 0) {
+			input_string += "S-";
+		}
+		if ((GetKeyState(VK_CONTROL) & 0x80) != 0) {
+			input_string += "C-";
+		}
+		if ((GetKeyState(VK_MENU) & 0x80) != 0) {
+			input_string += "M-";
+		}
+
+		int virtual_key = static_cast<int>(wparam);
+		switch (virtual_key) {
+		case VK_BACK: {
+			input_string += "BS";
+		} break;
+		case VK_TAB: {
+			input_string += "TAB";
+		} break;
+		case VK_RETURN: {
+			input_string += "CR";
+		} break;
+		case VK_ESCAPE: {
+			input_string += "Esc";
+		} break;
+		case VK_PRIOR: {
+			input_string += "PageUp";
+		} break;
+		case VK_NEXT: {
+			input_string += "PageDown";
+		} break;
+		case VK_HOME: {
+			input_string += "Home";
+		} break;
+		case VK_END: {
+			input_string += "End";
+		} break;
+		case VK_INSERT: {
+			input_string += "Insert";
+		} break;
+		case VK_DELETE: {
+			input_string += "Del";
+		} break;
+		}
+
+		input_string += ">";
+
+		NvimSendInput(context->nvim, input_string.c_str());
+	}
 	//case WM_MOUSEMOVE:
 	//	Input::mouse_pos[0] = static_cast<float>(GET_X_LPARAM(lparam));
 	//	Input::mouse_pos[1] = static_cast<float>(GET_Y_LPARAM(lparam));
@@ -140,7 +195,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Consolas", 20.0f);
+	RendererInitialize(&renderer, hwnd, L"Fira Code Retina", 20.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);

@@ -170,21 +170,69 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 	}
 }
 
+void DrawTextWithFlags(Renderer *renderer, wchar_t *text, D2D1_RECT_F rect, 
+	ID2D1SolidColorBrush *brush, uint16_t flags) {
+
+	uint32_t strlen = static_cast<uint32_t>(lstrlen(text));
+
+	// Allow the drawing to draw as far as it needs to, 
+	// this is especially important if using a font with ligatures
+	rect.right = renderer->grid_width * renderer->font_width;
+
+	if (flags == 0 || flags == HighlightAttributeFlags::HL_ATTRIB_REVERSE) {
+		renderer->render_target->DrawText(
+			text,
+			strlen,
+			renderer->text_format,
+			rect,
+			brush
+		);
+	}
+	else {
+		IDWriteTextLayout *text_layout = nullptr;
+		WIN_CHECK(renderer->write_factory->CreateTextLayout(
+			text,
+			strlen,
+			renderer->text_format,
+			rect.right - rect.left,
+			rect.bottom - rect.top,
+			&text_layout
+		));
+		DWRITE_TEXT_RANGE range {
+			.startPosition = 0,
+			.length = strlen
+		};
+		if (flags & HL_ATTRIB_ITALIC) {
+			text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
+		}
+		if (flags & HL_ATTRIB_BOLD) {
+			text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
+		}
+		if (flags & HL_ATTRIB_STRIKETHROUGH) {
+			text_layout->SetStrikethrough(true, range);
+		}
+		if (flags & HL_ATTRIB_UNDERLINE) {
+			text_layout->SetUnderline(true, range);
+		}
+		if (flags & HL_ATTRIB_UNDERCURL) {
+			text_layout->SetUnderline(true, range);
+		}
+
+		renderer->render_target->DrawTextLayout(
+			{ rect.left, rect.top },
+			text_layout,
+			brush
+		);
+
+		text_layout->Release();
+	}
+}
+
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 	renderer->render_target->BeginDraw();
 	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
-	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 
-	uint64_t grid_text_size = static_cast<uint64_t>(renderer->grid_width) * static_cast<uint64_t>(renderer->grid_height) + 1;
-	wchar_t *grid_text = reinterpret_cast<wchar_t *>(calloc(grid_text_size, sizeof(wchar_t)));
-
-	// DirectWrite currently ignores spaces when wrapping, so we have to resort
-	// to this hacky way of inserting newlines after each grid line.
-	for (uint32_t i = 1; i <= renderer->grid_height; ++i) {
-		grid_text[(renderer->grid_width) * i + (i - 1)] = L'\u000A';
-	}
-
-	std::vector<DrawingEffect> drawing_effects;
+	wchar_t wstr_text[8096];
 
 	uint32_t line_count = static_cast<uint32_t>(mpack_node_array_length(grid_lines));
 	for (uint32_t i = 1; i < line_count; ++i) {
@@ -215,23 +263,19 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				repeat = static_cast<uint32_t>(mpack_node_array_at(cells, 2).data->value.u);
 			}
 
-			// Fill in the characters in the appropriate slots of the grid text buffer
-			for (int k = 0; k < strlen; ++k) {
-				grid_text[renderer->grid_width * row + row + col_start + k] = static_cast<wchar_t>(str[k]);
+			for (uint32_t k = 0; k < repeat; ++k) {
+				for (int l = 0; l < strlen; ++l) {
+					wstr_text[l + k * strlen] = static_cast<wchar_t>(str[l]);
+				}
 			}
-			for (uint32_t k = 1; k < repeat; ++k) {
-				memcpy(
-					(grid_text + renderer->grid_width * row + row + col_start) + (strlen * k), 
-					(grid_text + renderer->grid_width * row + row + col_start), 
-					strlen * sizeof(wchar_t)
-				);
-			}
+			// Extra byte ensures a null-terminated string
+			wstr_text[strlen * repeat] = L'\0';
 
 			// Calculate the rectangle that covers the current cells
 			D2D1_RECT_F cells_rect {
 				.left = col_start * renderer->font_width,
 				.top = row * renderer->font_height,
-				.right = col_start * renderer->font_width + renderer->font_width * (strlen * repeat),
+				.right = col_start * renderer->font_width + renderer->font_width * lstrlen(wstr_text),
 				.bottom = (row * renderer->font_height) + renderer->font_height
 			};
 
@@ -243,78 +287,22 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				renderer->brushes.at(hl_id->foreground);
 
 			if (hl_id->flags & HL_ATTRIB_REVERSE) {
-				background_brush = reinterpret_cast<ID2D1SolidColorBrush *>(
-					reinterpret_cast<uint64_t>(background_brush) ^ 
-					reinterpret_cast<uint64_t>(foreground_brush)
-					);
-				foreground_brush = reinterpret_cast<ID2D1SolidColorBrush *>(
-					reinterpret_cast<uint64_t>(foreground_brush) ^
-					reinterpret_cast<uint64_t>(background_brush)
-					);
-				background_brush = reinterpret_cast<ID2D1SolidColorBrush *>(
-					reinterpret_cast<uint64_t>(background_brush) ^
-					reinterpret_cast<uint64_t>(foreground_brush)
-					);
+				ID2D1SolidColorBrush *temp = background_brush;
+				background_brush = foreground_brush;
+				foreground_brush = temp;
 			}
 
+			// Rectangles (background) should be drawn without anti-antialiasing to retain sharpness
+			renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 			renderer->render_target->FillRectangle(&cells_rect, background_brush);
+			renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-			drawing_effects.emplace_back(DrawingEffect {
-					.flags = static_cast<HighlightAttributeFlags>(hl_id->flags),
-					.text_range = {
-						.startPosition = static_cast<uint32_t>(row * renderer->grid_width + row + col_start),
-						.length = static_cast<uint32_t>(strlen * repeat)
-					},
-					.brush = foreground_brush
-				}
-			);
+			DrawTextWithFlags(renderer, wstr_text, cells_rect, foreground_brush, hl_id->flags);
 			col_start += strlen * repeat;
 		}
 	}
-	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-	
-	ID2D1SolidColorBrush *default_foreground_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
-	IDWriteTextLayout *test_text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
-		grid_text,
-		renderer->grid_height * renderer->grid_width,
-		renderer->text_format,
-		static_cast<float>(renderer->pixel_size.width),
-		static_cast<float>(renderer->pixel_size.height),
-		&test_text_layout
-	));
-
-	for (DrawingEffect &drawing_effect : drawing_effects) {
-		test_text_layout->SetDrawingEffect(drawing_effect.brush, drawing_effect.text_range);
-		if (drawing_effect.flags & HL_ATTRIB_ITALIC) {
-			test_text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, drawing_effect.text_range);
-		}
-		if (drawing_effect.flags & HL_ATTRIB_BOLD) {
-			test_text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, drawing_effect.text_range);
-		}
-		if (drawing_effect.flags & HL_ATTRIB_STRIKETHROUGH) {
-			test_text_layout->SetStrikethrough(true, drawing_effect.text_range);
-		}
-		if (drawing_effect.flags & HL_ATTRIB_UNDERLINE) {
-			test_text_layout->SetUnderline(true, drawing_effect.text_range);
-		}
-		if (drawing_effect.flags & HL_ATTRIB_UNDERCURL) {
-			test_text_layout->SetUnderline(true, drawing_effect.text_range);
-		}
-	}
-
-	renderer->render_target->DrawTextLayout(
-		{ 0.0f, 0.0f },
-		test_text_layout,
-		default_foreground_brush
-	);
-
-	test_text_layout->Release();
-
 	renderer->render_target->EndDraw();
 	renderer->render_target->Flush();
-
-	free(grid_text);
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
@@ -333,37 +321,4 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			DrawGridLines(renderer, redraw_command_arr);
 		}
 	}
-}
-
-void RendererDraw(Renderer *renderer) {
-	renderer->render_target->BeginDraw();
-	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
-	renderer->render_target->Clear(D2D1::ColorF(D2D1::ColorF::AntiqueWhite));
-
-	ID2D1SolidColorBrush *black_brush = NULL;
-	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::Black),
-		&black_brush
-	));
-
-	IDWriteTextLayout *test_text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
-		L"Text messaging, or texting, is the act of composing and sending electronic messages, typically consisting of alphabetic and numeric characters, between two or more users of mobile devices, desktops/laptops, or other type of compatible computer.",
-		245,
-		renderer->text_format,
-		2560,
-		1440,
-		&test_text_layout
-	));
-
-	renderer->render_target->DrawTextLayout(
-		{ 0.0f, 0.0f },
-		test_text_layout,
-		black_brush
-	);
-
-	test_text_layout->Release();
-	black_brush->Release();
-
-	renderer->render_target->EndDraw(nullptr, nullptr);
 }
