@@ -24,7 +24,6 @@ enum class CursorShape {
 	Vertical,
 	Horizontal
 };
-
 struct CursorModeInfo {
 	CursorShape shape;
 	float cell_percentage;
@@ -39,14 +38,18 @@ struct Cursor {
 };
 
 struct Renderer {
+	std::unordered_map<uint32_t, ID2D1SolidColorBrush *> brushes;
+	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
+	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
+	Cursor cursor;
+
 	ID2D1Factory *d2d_factory;
 	ID2D1HwndRenderTarget *render_target;
 	IDWriteFactory *write_factory;
-
 	IDWriteTextFormat *text_format;
 
-	const wchar_t *font;
 	float dpi_scale;
+	const wchar_t *font;
 	float font_size;
 	float font_height;
 	float font_width;
@@ -57,11 +60,6 @@ struct Renderer {
 	uint32_t grid_height;
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
-
-	Cursor cursor;
-	std::unordered_map<uint32_t, ID2D1SolidColorBrush *> brushes;
-	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
-	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size);

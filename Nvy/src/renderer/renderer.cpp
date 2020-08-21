@@ -17,6 +17,7 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 
 	D2D1_RENDER_TARGET_PROPERTIES target_props = D2D1_RENDER_TARGET_PROPERTIES {
 		.type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
+		.pixelFormat = D2D1::PixelFormat(),
 		.dpiX = 96.0f,
 		.dpiY = 96.0f,
 	};
@@ -220,14 +221,8 @@ void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttribute
 		}
 	}();
 
-	ID2D1SolidColorBrush *brush2;
-	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::Red),
-		&brush2
-	));
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 	renderer->render_target->FillRectangle(&rect, brush);
-	renderer->render_target->DrawRectangle(&rect, brush2);
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 }
 
@@ -461,6 +456,45 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 	}
 }
 
+void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
+	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
+
+	int top = static_cast<int>(mpack_node_array_at(scroll_region_params, 1).data->value.u);
+	int bot = static_cast<int>(mpack_node_array_at(scroll_region_params, 2).data->value.u);
+	int left = static_cast<int>(mpack_node_array_at(scroll_region_params, 3).data->value.u);
+	int right = static_cast<int>(mpack_node_array_at(scroll_region_params, 4).data->value.u);
+	int rows = static_cast<int>(mpack_node_array_at(scroll_region_params, 5).data->value.u);
+	int cols = static_cast<int>(mpack_node_array_at(scroll_region_params, 6).data->value.u);
+
+	int buffer_bot_row = static_cast<int>(renderer->grid_height - 3);
+
+	// This part is slightly cryptic, basically we're just
+	// iterating from top to bottom or vice versa depending on scroll direction.
+	// When scrolling from the top we can skip the first line, since it will be overwritten,
+	// similarly we can skip the last line when scrolling from the bottom. Ranges are end-exclusive,
+	// hence the -2.
+	int start_row = rows > 0 ? top + 1 : bot - 2;
+	int increment = rows > 0 ? 1 : -1;
+	for (int i = start_row; rows > 0 ? i < bot : i >= top; i += increment) {
+		int target_row = i - rows;
+		if (target_row < 0 || target_row > buffer_bot_row) {
+			continue;
+		}
+
+		memcpy(
+			&renderer->grid_chars[target_row * renderer->grid_width + left],
+			&renderer->grid_chars[i * renderer->grid_width + left],
+			(static_cast<uint64_t>(right) - left) * sizeof(wchar_t)
+		);
+
+		memcpy(
+			&renderer->grid_hl_attrib_ids[target_row * renderer->grid_width + left],
+			&renderer->grid_hl_attrib_ids[i * renderer->grid_width + left],
+			static_cast<uint64_t>(right) - left
+		);
+	}
+}
+
 void DrawCursor(Renderer *renderer) {
 	HighlightAttributes hl_attribs = renderer->hl_attribs[renderer->cursor.mode_info->hl_attrib_index];
 	wchar_t cursor_char = renderer->grid_chars[renderer->cursor.grid_offset];
@@ -512,7 +546,10 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			UpdateCursorMode(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
-			//__debugbreak();
+			ScrollRegion(renderer, redraw_command_arr);
+			for (uint32_t i = 0; i < renderer->grid_height; ++i) {
+				DrawGridLine(renderer, i);
+			}
 		}
 	}
 

@@ -40,9 +40,6 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			RendererRedraw(context->renderer, params);
 		}
 	}
-
-	mpack_tree_destroy(tree);
-	free(tree);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -73,11 +70,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		// Special case for <LT>
 		if (wparam == 0x3C) {
 			NvimSendInput(context->nvim, "<LT>");
-			printf("Input: <LT>\n");
 		}
 		else if (wparam >= 0x20 && wparam <= 0x7E) {
 			NvimSendInput(context->nvim, static_cast<char>(wparam));
-			printf("Input: %c\n", static_cast<char>(wparam));
 		}
 	} return 0;
 	case WM_KEYDOWN: {
@@ -159,9 +154,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 
 		input_string += ">";
-
 		NvimSendInput(context->nvim, input_string.c_str());
-		printf("Input: %s\n", input_string.c_str());
 	} return 0;
 	//case WM_MOUSEMOVE:
 	//	Input::mouse_pos[0] = static_cast<float>(GET_X_LPARAM(lparam));
