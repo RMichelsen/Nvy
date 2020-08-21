@@ -25,20 +25,20 @@ enum class CursorShape {
 	Horizontal
 };
 struct CursorPos {
-	uint32_t row;
-	uint32_t col;
+	int row;
+	int col;
 };
 struct CursorModeInfo {
 	CursorShape shape;
 	float cell_percentage;
-	uint32_t hl_attrib_index;
+	int hl_attrib_index;
 };
 struct Cursor {
 	CursorModeInfo *mode_info;
 	D2D1_RECT_F cell_rect;
-	uint32_t row;
-	uint32_t col;
-	uint32_t grid_offset;
+	int row;
+	int col;
+	int grid_offset;
 };
 
 struct Renderer {
@@ -60,8 +60,8 @@ struct Renderer {
 
 	D2D1_SIZE_U pixel_size;
 
-	uint32_t grid_rows;
-	uint32_t grid_cols;
+	int grid_rows;
+	int grid_cols;
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
 };

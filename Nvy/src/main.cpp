@@ -6,42 +6,32 @@
 struct Context {
 	Nvim *nvim;
 	Renderer *renderer;
+	WINDOWPLACEMENT saved_window_placement;
 };
 
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
-	mpack_node_t root = mpack_tree_root(tree);
+	MPackMessageResult result = MPackExtractMessageResult(tree);
 
-	NvimMessageType message_type = static_cast<NvimMessageType>(mpack_node_array_at(root, 0).data->value.i);
-
-	if (message_type == NvimMessageType::Response) {
-		uint64_t msg_id = mpack_node_array_at(root, 1).data->value.u;
-
-		// TODO: handle error
-		assert(mpack_node_array_at(root, 2).data->type == mpack_type_nil);
-		mpack_node_t result = mpack_node_array_at(root, 3);
-		
-		assert(context->nvim->msg_id_to_method.size() >= msg_id);
-		switch (context->nvim->msg_id_to_method[msg_id]) {
+	if (result.type == MPackMessageType::Response) {
+		assert(result.response.msg_id <= context->nvim->current_msg_id);
+		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
 		case NvimMethod::vim_get_api_info: {
-			mpack_node_t top_level_map = mpack_node_array_at(result, 1);
+			mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
 			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
-			context->nvim->api_level = mpack_node_map_cstr(version_map, "api_level").data->value.u;
+			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
+			assert(api_level > 6);
 
-			int requested_rows = static_cast<uint32_t>(context->renderer->pixel_size.height / context->renderer->font_height);
-			int requested_cols = static_cast<uint32_t>(context->renderer->pixel_size.width / context->renderer->font_width);
-			printf("Requested INITAL %u:%u\n", requested_rows, requested_cols);
+			mpack_node_print_to_stdout(result.params);
+
+			int requested_rows = static_cast<int>(context->renderer->pixel_size.height / context->renderer->font_height);
+			int requested_cols = static_cast<int>(context->renderer->pixel_size.width / context->renderer->font_width);
 			NvimSendUIAttach(context->nvim, requested_rows, requested_cols);
 		} break;
 		}
 	}
-	else if (message_type == NvimMessageType::Notification) {
-		mpack_node_t name = mpack_node_array_at(root, 1);
-		mpack_node_t params = mpack_node_array_at(root, 2);
-		const char *str = mpack_node_str(name);
-		int strlen = static_cast<int>(mpack_node_strlen(name));
-
-		if (MPackMatchString(name, "redraw")) {
-			RendererRedraw(context->renderer, params);
+	else if (result.type == MPackMessageType::Notification) {
+		if (MPackMatchString(result.notification.name, "redraw")) {
+			RendererRedraw(context->renderer, result.params);
 		}
 	}
 }
@@ -62,8 +52,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		if (wparam != SIZE_MINIMIZED) {
 			uint32_t new_width = LOWORD(lparam);
 			uint32_t new_height = HIWORD(lparam);
-			uint32_t requested_rows = static_cast<uint32_t>(new_height / context->renderer->font_height);
-			uint32_t requested_cols = static_cast<uint32_t>(new_width / context->renderer->font_width);
+			int requested_rows = static_cast<int>(new_height / context->renderer->font_height);
+			int requested_cols = static_cast<int>(new_width / context->renderer->font_width);
 			RendererResize(context->renderer, new_width, new_height);
 			NvimSendResize(context->nvim, requested_rows, requested_cols);
 		}
@@ -84,8 +74,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			NvimSendInput(context->nvim, static_cast<char>(wparam));
 		}
 	} return 0;
-	case WM_KEYDOWN: {
-		NvimSendInput(context->nvim, static_cast<int>(wparam));
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN: {
+		// Special case for <ALT+ENTER> (fullscreen transition)
+		if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
+			DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+			MONITORINFO mi { .cbSize = sizeof(MONITORINFO) };
+			if (style & WS_OVERLAPPEDWINDOW) {
+				if (GetWindowPlacement(hwnd, &context->saved_window_placement) &&
+					GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
+					SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+					SetWindowPos(hwnd, HWND_TOP,
+						mi.rcMonitor.left, mi.rcMonitor.top,
+						mi.rcMonitor.right - mi.rcMonitor.left,
+						mi.rcMonitor.bottom - mi.rcMonitor.top,
+						SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+				}
+			}
+			else {
+				SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+				SetWindowPlacement(hwnd, &context->saved_window_placement);
+				SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+					SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+			}
+		}
+		else {
+			NvimSendInput(context->nvim, static_cast<int>(wparam));
+		}
 	} return 0;
 	case WM_MOUSEMOVE: {
 		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
@@ -161,7 +176,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.lpfnWndProc = WndProc,
 		.hInstance = instance,
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
-		.hbrBackground = nullptr, // TODO: Change to something else, if resize causes tearing
+		.hbrBackground = nullptr,
 		.lpszClassName = window_class_name
 	};
 
@@ -193,7 +208,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 	Context context {
 		.nvim = &nvim,
-		.renderer = &renderer
+		.renderer = &renderer,
+		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
 	};
 	SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&context));
 

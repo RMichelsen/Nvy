@@ -1,9 +1,5 @@
 #pragma once
 
-enum class NvimMessageType {
-	Response = 1,
-	Notification = 2
-};
 enum NvimMethod : uint8_t {
 	vim_get_api_info = 0,
 	nvim_input = 1,
@@ -39,9 +35,7 @@ enum class MouseAction {
 };
 
 struct Nvim {
-	uint64_t api_level;
-
-	uint32_t current_msg_id;
+	int64_t current_msg_id;
 	std::vector<NvimMethod> msg_id_to_method;
 
 	HWND hwnd;
@@ -55,9 +49,9 @@ struct Nvim {
 void NvimInitialize(Nvim *nvim, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
-void NvimSendUIAttach(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols);
-void NvimSendResize(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols);
+void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);
+void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols);
 void NvimSendInput(Nvim *nvim, char input_char);
 void NvimSendInput(Nvim *nvim, const char* input_chars);
 void NvimSendInput(Nvim *nvim, int virtual_key);
-void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, uint32_t mouse_row, uint32_t mouse_col);
+void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);

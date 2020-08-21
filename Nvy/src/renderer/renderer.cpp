@@ -40,7 +40,14 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 }
 
 void RendererShutdown(Renderer *renderer) {
-	// TODO: DirectX cleanup??
+	for (auto& [_, brush] : renderer->brushes) {
+		brush->Release();
+	}
+	renderer->d2d_factory->Release();
+	renderer->render_target->Release();
+	renderer->write_factory->Release();
+	renderer->text_format->Release();
+
 
 	free(renderer->grid_chars);
 	free(renderer->grid_hl_attrib_ids);
@@ -99,8 +106,8 @@ void RendererUpdateFontMetrics(Renderer *renderer) {
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {
 	return CursorPos {
-		.row = static_cast<uint32_t>(mouse_pos.y / renderer->font_height),
-		.col = static_cast<uint32_t>(mouse_pos.x / renderer->font_width)
+		.row = static_cast<int>(mouse_pos.y / renderer->font_height),
+		.col = static_cast<int>(mouse_pos.x / renderer->font_width)
 	};
 }
 
@@ -131,39 +138,26 @@ void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
 }
 
 void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attribs) {
-	uint32_t attrib_count = static_cast<uint32_t>(mpack_node_array_length(highlight_attribs));
-	for (uint32_t i = 1; i < attrib_count; ++i) {
-		uint64_t attrib_index = mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 0).data->value.u;
+	uint64_t attrib_count = mpack_node_array_length(highlight_attribs);
+	for (uint64_t i = 1; i < attrib_count; ++i) {
+		int64_t attrib_index = mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 0).data->value.i;
 		assert(attrib_index <= MAX_HIGHLIGHT_ATTRIBS);
 
 		mpack_node_t attrib_map = mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 1);
 
-		mpack_node_t foreground = mpack_node_map_cstr_optional(attrib_map, "foreground");
-		if (!mpack_node_is_missing(foreground)) {
-			renderer->hl_attribs[attrib_index].foreground = static_cast<uint32_t>(foreground.data->value.u);
-			CreateBrush(renderer, static_cast<uint32_t>(foreground.data->value.u));
-		}
-		else {
-			renderer->hl_attribs[attrib_index].foreground = DEFAULT_COLOR;
-		}
-
-		mpack_node_t background = mpack_node_map_cstr_optional(attrib_map, "background");
-		if (!mpack_node_is_missing(background)) {
-			renderer->hl_attribs[attrib_index].background = static_cast<uint32_t>(background.data->value.u);
-			CreateBrush(renderer, static_cast<uint32_t>(background.data->value.u));
-		}
-		else {
-			renderer->hl_attribs[attrib_index].background = DEFAULT_COLOR;
-		}
-
-		mpack_node_t special = mpack_node_map_cstr_optional(attrib_map, "special");
-		if (!mpack_node_is_missing(special)) {
-			renderer->hl_attribs[attrib_index].special = static_cast<uint32_t>(special.data->value.u);
-			CreateBrush(renderer, static_cast<uint32_t>(special.data->value.u));
-		}
-		else {
-			renderer->hl_attribs[attrib_index].special = DEFAULT_COLOR;
-		}
+		const auto SetColor = [&](const char *name, uint32_t *color) {
+			mpack_node_t foreground = mpack_node_map_cstr_optional(attrib_map, name);
+			if (!mpack_node_is_missing(foreground)) {
+				*color = static_cast<uint32_t>(foreground.data->value.u);
+				CreateBrush(renderer, *color);
+			}
+			else {
+				*color = DEFAULT_COLOR;
+			}
+		};
+		SetColor("foreground", &renderer->hl_attribs[attrib_index].foreground);
+		SetColor("background", &renderer->hl_attribs[attrib_index].background);
+		SetColor("special", &renderer->hl_attribs[attrib_index].special);
 
 		const auto SetFlag = [&](const char *flag_name, HighlightAttributeFlags flag) {
 			mpack_node_t flag_node = mpack_node_map_cstr_optional(attrib_map, flag_name);
@@ -187,7 +181,7 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 }
 
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
-	IDWriteTextLayout *text_layout, uint32_t start, uint32_t end) {
+	IDWriteTextLayout *text_layout, int start, int end) {
 	ID2D1SolidColorBrush *brush = [=]() {
 		if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
 			return hl_attribs->background == DEFAULT_COLOR ?
@@ -202,8 +196,8 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	}();
 
 	DWRITE_TEXT_RANGE range {
-		.startPosition = start,
-		.length = (end - start)
+		.startPosition = static_cast<uint32_t>(start),
+		.length = static_cast<uint32_t>(end - start)
 	};
 	text_layout->SetDrawingEffect(brush, range);
 	if (hl_attribs->flags & HL_ATTRIB_ITALIC) {
@@ -242,7 +236,7 @@ void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttribute
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 }
 
-void DrawForegroundText(Renderer *renderer, wchar_t *text, uint32_t text_length,
+void DrawForegroundText(Renderer *renderer, wchar_t *text, int text_length,
 	D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
 	IDWriteTextLayout *text_layout = nullptr;
 	WIN_CHECK(renderer->write_factory->CreateTextLayout(
@@ -266,8 +260,8 @@ void DrawForegroundText(Renderer *renderer, wchar_t *text, uint32_t text_length,
 	text_layout->Release();
 }
 
-void DrawGridLine(Renderer *renderer, uint32_t row) {
-	uint32_t base = row * renderer->grid_cols;
+void DrawGridLine(Renderer *renderer, int row) {
+	int base = row * renderer->grid_cols;
 	D2D1_RECT_F rect {
 		.left = 0 * renderer->font_width,
 		.top = row * renderer->font_height,
@@ -286,8 +280,8 @@ void DrawGridLine(Renderer *renderer, uint32_t row) {
 	));
 
 	uint8_t hl_attrib_id = renderer->grid_hl_attrib_ids[base];
-	uint32_t col_offset = 0;
-	for (uint32_t i = 0; i < renderer->grid_cols; ++i) {
+	int col_offset = 0;
+	for (int i = 0; i < renderer->grid_cols; ++i) {
 		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
 			D2D1_RECT_F rect {
 				.left = col_offset * renderer->font_width,
@@ -328,43 +322,44 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 	assert(renderer->grid_chars != nullptr);
 	assert(renderer->grid_hl_attrib_ids != nullptr);
 
-	uint32_t line_count = static_cast<uint32_t>(mpack_node_array_length(grid_lines));
-	for (uint32_t i = 1; i < line_count; ++i) {
+	size_t line_count = mpack_node_array_length(grid_lines);
+	for (size_t i = 1; i < line_count; ++i) {
 		mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
 
-		uint32_t row = static_cast<uint32_t>(mpack_node_array_at(grid_line, 1).data->value.i);
-		uint32_t col_start = static_cast<uint32_t>(mpack_node_array_at(grid_line, 2).data->value.i);
+		int row = MPackIntFromArray(grid_line, 1);
+		int col_start = MPackIntFromArray(grid_line, 2);
 
 		mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
-		uint32_t cells_array_length = static_cast<uint32_t>(mpack_node_array_length(cells_array));
+		size_t cells_array_length = mpack_node_array_length(cells_array);
 
-		uint32_t hl_attrib_id = 0;
-		for (uint32_t j = 0; j < cells_array_length; ++j) {
+		int hl_attrib_id = 0;
+		for (size_t j = 0; j < cells_array_length; ++j) {
 			mpack_node_t cells = mpack_node_array_at(cells_array, j);
-			uint32_t cells_length = static_cast<uint32_t>(mpack_node_array_length(cells));
+			size_t cells_length = mpack_node_array_length(cells);
 
 			mpack_node_t text = mpack_node_array_at(cells, 0);
 			const char *str = mpack_node_str(text);
-			uint32_t strlen = static_cast<uint32_t>(mpack_node_strlen(text));
+			int strlen = static_cast<int>(mpack_node_strlen(text));
 
+			// TODO: Right part of double-width char
 			assert(strncmp(str, "", strlen));
 
 			if (cells_length > 1) {
-				hl_attrib_id = static_cast<uint32_t>(mpack_node_array_at(cells, 1).data->value.u);
+				hl_attrib_id = MPackIntFromArray(cells, 1);
 			}
 
-			uint32_t repeat = 1;
+			int repeat = 1;
 			if (cells_length > 2) {
-				repeat = static_cast<uint32_t>(mpack_node_array_at(cells, 2).data->value.u);
+				repeat = MPackIntFromArray(cells, 2);
 			}
 
-			uint32_t wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
-			uint32_t wstrlen_with_repetitions = static_cast<uint64_t>(wstrlen) * repeat;
+			int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
+			int wstrlen_with_repetitions = wstrlen * repeat;
 
-			uint32_t offset = row * renderer->grid_cols + col_start;
+			int offset = row * renderer->grid_cols + col_start;
 			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
-			for (uint32_t k = 0; k < repeat; ++k) {
-				uint32_t idx = offset + (k * wstrlen);
+			for (int k = 0; k < repeat; ++k) {
+				int idx = offset + (k * wstrlen);
 				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_cols * renderer->grid_rows) - idx);
 			}
 
@@ -372,25 +367,25 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 		}
 	}
 
-	for (uint32_t i = 1; i < line_count; ++i) {
+	for (size_t i = 1; i < line_count; ++i) {
 		mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
-		uint32_t row = static_cast<uint32_t>(mpack_node_array_at(grid_line, 1).data->value.i);
+		int row = MPackIntFromArray(grid_line, 1);
 		DrawGridLine(renderer, row);
 	}
 }
 
 void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 	mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
-	uint64_t grid_cols = mpack_node_array_at(grid_resize_params, 1).data->value.u;
-	uint64_t grid_rows = mpack_node_array_at(grid_resize_params, 2).data->value.u;
+	int grid_cols = MPackIntFromArray(grid_resize_params, 1);
+	int grid_rows = MPackIntFromArray(grid_resize_params, 2);
 
 	if (renderer->grid_chars == nullptr ||
 		renderer->grid_hl_attrib_ids == nullptr ||
 		renderer->grid_cols != grid_cols ||
 		renderer->grid_rows != grid_rows) {
 		
-		renderer->grid_cols = static_cast<uint32_t>(grid_cols);
-		renderer->grid_rows = static_cast<uint32_t>(grid_rows);
+		renderer->grid_cols = grid_cols;
+		renderer->grid_rows = grid_rows;
 
 		renderer->grid_chars = reinterpret_cast<wchar_t *>(calloc(grid_cols * grid_rows, sizeof(wchar_t)));
 		renderer->grid_hl_attrib_ids = reinterpret_cast<uint8_t *>(calloc(grid_cols * grid_rows, sizeof(uint8_t)));
@@ -423,8 +418,8 @@ void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
 	DrawGridLine(renderer, renderer->cursor.row);
 
 	mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
-	renderer->cursor.row = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 1).data->value.u);
-	renderer->cursor.col = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 2).data->value.u);
+	renderer->cursor.row = MPackIntFromArray(cursor_goto_params, 1);
+	renderer->cursor.col = MPackIntFromArray(cursor_goto_params, 2);
 	renderer->cursor.grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
 	renderer->cursor.cell_rect = D2D1_RECT_F {
 		.left = renderer->cursor.col * renderer->font_width,
@@ -442,17 +437,17 @@ void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
 void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params) {
 	mpack_node_t mode_info_params = mpack_node_array_at(mode_info_set_params, 1);
 	mpack_node_t mode_infos = mpack_node_array_at(mode_info_params, 1);
-	uint32_t mode_infos_length = static_cast<uint32_t>(mpack_node_array_length(mode_infos));
+	size_t mode_infos_length = mpack_node_array_length(mode_infos);
 	assert(mode_infos_length <= MAX_CURSOR_MODE_INFOS);
 
-	for (uint32_t i = 0; i < mode_infos_length; ++i) {
+	for (size_t i = 0; i < mode_infos_length; ++i) {
 		mpack_node_t mode_info_map = mpack_node_array_at(mode_infos, i);
 
 		renderer->cursor_mode_infos[i].shape = CursorShape::None;
 		mpack_node_t cursor_shape = mpack_node_map_cstr_optional(mode_info_map, "cursor_shape");
 		if (!mpack_node_is_missing(cursor_shape)) {
 			const char *cursor_shape_str = mpack_node_str(cursor_shape);
-			uint64_t strlen = mpack_node_strlen(cursor_shape);
+			size_t strlen = mpack_node_strlen(cursor_shape);
 			if (!strncmp(cursor_shape_str, "block", strlen)) {
 				renderer->cursor_mode_infos[i].shape = CursorShape::Block;
 			}
@@ -467,13 +462,13 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 		renderer->cursor_mode_infos[i].cell_percentage = 0;
 		mpack_node_t cell_percentage = mpack_node_map_cstr_optional(mode_info_map, "cell_percentage");
 		if (!mpack_node_is_missing(cell_percentage)) {
-			renderer->cursor_mode_infos[i].cell_percentage = static_cast<float>(cell_percentage.data->value.u) / 100.0f;
+			renderer->cursor_mode_infos[i].cell_percentage = static_cast<float>(cell_percentage.data->value.i) / 100.0f;
 		}
 
 		renderer->cursor_mode_infos[i].hl_attrib_index = 0;
-		mpack_node_t hl_ttrib_index = mpack_node_map_cstr_optional(mode_info_map, "attr_id");
-		if (!mpack_node_is_missing(hl_ttrib_index)) {
-			renderer->cursor_mode_infos[i].hl_attrib_index = static_cast<uint32_t>(hl_ttrib_index.data->value.u);
+		mpack_node_t hl_attrib_index = mpack_node_map_cstr_optional(mode_info_map, "attr_id");
+		if (!mpack_node_is_missing(hl_attrib_index)) {
+			renderer->cursor_mode_infos[i].hl_attrib_index = static_cast<int>(hl_attrib_index.data->value.i);
 		}
 	}
 }
@@ -481,41 +476,40 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
 
-	int top = static_cast<int>(mpack_node_array_at(scroll_region_params, 1).data->value.u);
-	int bot = static_cast<int>(mpack_node_array_at(scroll_region_params, 2).data->value.u);
-	int left = static_cast<int>(mpack_node_array_at(scroll_region_params, 3).data->value.u);
-	int right = static_cast<int>(mpack_node_array_at(scroll_region_params, 4).data->value.u);
-	int rows = static_cast<int>(mpack_node_array_at(scroll_region_params, 5).data->value.u);
-	int cols = static_cast<int>(mpack_node_array_at(scroll_region_params, 6).data->value.u);
+	int64_t top = mpack_node_array_at(scroll_region_params, 1).data->value.i;
+	int64_t bot = mpack_node_array_at(scroll_region_params, 2).data->value.i;
+	int64_t left = mpack_node_array_at(scroll_region_params, 3).data->value.i;
+	int64_t right = mpack_node_array_at(scroll_region_params, 4).data->value.i;
+	int64_t rows = mpack_node_array_at(scroll_region_params, 5).data->value.i;
+	int64_t cols = mpack_node_array_at(scroll_region_params, 6).data->value.i;
 
-	// Currently nvim does not do any horizontal scrolling
+	// Currently nvim does not support horizontal scrolling, 
+	// the parameter is reserved for later use
 	assert(cols == 0);
-
-	int buffer_bot_row = static_cast<int>(renderer->grid_rows - 3);
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
-	// When scrolling from the top we can skip the first line, since it will be overwritten,
-	// similarly we can skip the last line when scrolling from the bottom. Ranges are end-exclusive,
-	// hence the -2.
-	int start_row = rows > 0 ? top + 1 : bot - 2;
-	int increment = rows > 0 ? 1 : -1;
-	for (int i = start_row; rows > 0 ? i < bot : i >= top; i += increment) {
-		int target_row = i - rows;
-		if (target_row < 0 || target_row > buffer_bot_row) {
+	int64_t start_row = rows > 0 ? top : bot - 1;
+	int64_t end_row = rows > 0 ? bot - 1 : top;
+	int64_t increment = rows > 0 ? 1 : -1;
+
+	for (int64_t i = start_row; rows > 0 ? i <= end_row : i >= end_row; i += increment) {
+		// Clip anything outside the scroll region
+		int64_t target_row = i - rows;
+		if (target_row < top || target_row >= bot) {
 			continue;
 		}
 
 		memcpy(
 			&renderer->grid_chars[target_row * renderer->grid_cols + left],
 			&renderer->grid_chars[i * renderer->grid_cols + left],
-			(static_cast<uint64_t>(right) - left) * sizeof(wchar_t)
+			(right - left) * sizeof(wchar_t)
 		);
 
 		memcpy(
 			&renderer->grid_hl_attrib_ids[target_row * renderer->grid_cols + left],
 			&renderer->grid_hl_attrib_ids[i * renderer->grid_cols + left],
-			static_cast<uint64_t>(right) - left
+			right - left
 		);
 	}
 }
@@ -540,9 +534,9 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 	renderer->render_target->BeginDraw();
 	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
 
-	uint32_t redraw_commands_length = static_cast<uint32_t>(mpack_node_array_length(params));
+	uint64_t redraw_commands_length = mpack_node_array_length(params);
 
-	for (uint32_t i = 0; i < redraw_commands_length; ++i) {
+	for (uint64_t i = 0; i < redraw_commands_length; ++i) {
 		mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
 		mpack_node_t redraw_command_name = mpack_node_array_at(redraw_command_arr, 0);
 
@@ -572,7 +566,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
-			for (uint32_t i = 0; i < renderer->grid_rows; ++i) {
+			for (int i = 0; i < renderer->grid_rows; ++i) {
 				DrawGridLine(renderer, i);
 			}
 		}

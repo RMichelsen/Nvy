@@ -26,15 +26,12 @@ void MPackSendRequest(Nvim *nvim, NvimMethod method, std::function<void(mpack_wr
 
 	mpack_finish_array(&writer);
 
-	// TODO: Error Handle
-	if (mpack_writer_destroy(&writer) != mpack_ok) {
-		fprintf(stderr, "An error occurred encoding the data!\n");
-		return;
-	}
+	mpack_error_t err = mpack_writer_destroy(&writer);
+	assert(err == mpack_ok);
 
 	DWORD bytes_written;
-	BOOL b = WriteFile(nvim->stdin_write, data, static_cast<DWORD>(size), &bytes_written, nullptr);
-	assert(b);
+	bool success = WriteFile(nvim->stdin_write, data, static_cast<DWORD>(size), &bytes_written, nullptr);
+	assert(success);
 
 	free(data);
 }
@@ -60,27 +57,24 @@ void MPackSendNotification(Nvim *nvim, NvimOutboundNotification notification, st
 
 	mpack_finish_array(&writer);
 
-	// TODO: Error Handle
-	if (mpack_writer_destroy(&writer) != mpack_ok) {
-		fprintf(stderr, "An error occurred encoding the data!\n");
-		return;
-	}
+	mpack_error_t err = mpack_writer_destroy(&writer);
+	assert(err == mpack_ok);
 
 	DWORD bytes_written;
-	BOOL b = WriteFile(nvim->stdin_write, data, static_cast<DWORD>(size), &bytes_written, nullptr);
-	assert(b);
+	bool success = WriteFile(nvim->stdin_write, data, static_cast<DWORD>(size), &bytes_written, nullptr);
+	assert(success);
 
 	free(data);
 }
 
-static uint64_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
+static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 	HANDLE nvim_stdout_read = mpack_tree_context(tree);
 	DWORD bytes_read;
 	BOOL success = ReadFile(nvim_stdout_read, buffer, static_cast<DWORD>(count), &bytes_read, nullptr);
 	if (!success) {
 		mpack_tree_flag_error(tree, mpack_error_io);
 	}
-	return static_cast<uint64_t>(bytes_read);
+	return bytes_read;
 }
 
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
@@ -100,16 +94,13 @@ DWORD WINAPI NvimMessageHandler(LPVOID param) {
 
 	mpack_tree_destroy(tree);
 	free(tree);
-
-	// TODO: Error handle
-	printf("Nvim Message Handler Died\n");
+	PostMessage(nvim->hwnd, WM_DESTROY, 0, 0);
 	return 0;
 }
 
 void NvimInitialize(Nvim *nvim, HWND hwnd) {
 	nvim->hwnd = hwnd;
 	
-	// TODO: Error handle win32 api calls
 	HANDLE job_object = CreateJobObject(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info {
 		.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
@@ -171,7 +162,7 @@ void NvimShutdown(Nvim *nvim) {
 	CloseHandle(nvim->process_info.hProcess);
 }
 
-void NvimSendUIAttach(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols) {
+void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {
 	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach,
 		[=](mpack_writer_t *writer) {
 			mpack_start_array(writer, 3);
@@ -186,7 +177,7 @@ void NvimSendUIAttach(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols) {
 	);
 }
 
-void NvimSendResize(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols) {
+void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols) {
 	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_try_resize_grid,
 		[=](mpack_writer_t *writer) {
 			mpack_start_array(writer, 3);
@@ -372,6 +363,7 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	default: {
 		if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
 			(ctrl_down || alt_down)) {
+			// Convert to lower case
 			input_string += static_cast<char>(virtual_key |= 32);
 		}
 		else {
@@ -382,8 +374,6 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 
 	input_string += ">";
 
-	printf("Input %s\n", input_string.c_str());
-
 	MPackSendRequest(nvim, NvimMethod::nvim_input,
 		[=](mpack_writer_t *writer) {
 			mpack_start_array(writer, 1);
@@ -393,7 +383,7 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	);
 }
 
-void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, uint32_t mouse_row, uint32_t mouse_col) {
+void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col) {
 	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
 	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
