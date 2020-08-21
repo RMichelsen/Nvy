@@ -57,9 +57,8 @@ void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta) {
 		&renderer->text_format
 	));
 
-	//WIN_CHECK(renderer->text_format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING));
 	WIN_CHECK(renderer->text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
-	WIN_CHECK(renderer->text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP));
+	WIN_CHECK(renderer->text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
 	RendererUpdateFontMetrics(renderer);
 }
@@ -170,92 +169,177 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 	}
 }
 
-void DrawTextWithFlags(Renderer *renderer, wchar_t *text, D2D1_RECT_F rect, 
-	ID2D1SolidColorBrush *brush, uint16_t flags) {
+void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
+	IDWriteTextLayout *text_layout, uint32_t start, uint32_t end) {
+	ID2D1SolidColorBrush *brush = [=]() {
+		if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
+			return hl_attribs->background == DEFAULT_COLOR ?
+				renderer->brushes.at(renderer->hl_attribs[0].background) :
+				renderer->brushes.at(hl_attribs->background);
+		}
+		else {
+			return hl_attribs->foreground == DEFAULT_COLOR ?
+				renderer->brushes.at(renderer->hl_attribs[0].foreground) :
+				renderer->brushes.at(hl_attribs->foreground);
+		}
+	}();
 
-	uint32_t strlen = static_cast<uint32_t>(lstrlen(text));
-
-	// Allow the drawing to draw as far as it needs to, 
-	// this is especially important if using a font with ligatures
-	rect.right = renderer->grid_width * renderer->font_width;
-
-	if (flags == 0 || flags == HighlightAttributeFlags::HL_ATTRIB_REVERSE) {
-		renderer->render_target->DrawText(
-			text,
-			strlen,
-			renderer->text_format,
-			rect,
-			brush
-		);
+	DWRITE_TEXT_RANGE range {
+		.startPosition = start,
+		.length = (end - start)
+	};
+	text_layout->SetDrawingEffect(brush, range);
+	if (hl_attribs->flags & HL_ATTRIB_ITALIC) {
+		text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
 	}
-	else {
-		IDWriteTextLayout *text_layout = nullptr;
-		WIN_CHECK(renderer->write_factory->CreateTextLayout(
-			text,
-			strlen,
-			renderer->text_format,
-			rect.right - rect.left,
-			rect.bottom - rect.top,
-			&text_layout
-		));
-		DWRITE_TEXT_RANGE range {
-			.startPosition = 0,
-			.length = strlen
-		};
-		if (flags & HL_ATTRIB_ITALIC) {
-			text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
-		}
-		if (flags & HL_ATTRIB_BOLD) {
-			text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
-		}
-		if (flags & HL_ATTRIB_STRIKETHROUGH) {
-			text_layout->SetStrikethrough(true, range);
-		}
-		if (flags & HL_ATTRIB_UNDERLINE) {
-			text_layout->SetUnderline(true, range);
-		}
-		if (flags & HL_ATTRIB_UNDERCURL) {
-			text_layout->SetUnderline(true, range);
-		}
-
-		renderer->render_target->DrawTextLayout(
-			{ rect.left, rect.top },
-			text_layout,
-			brush
-		);
-
-		text_layout->Release();
+	if (hl_attribs->flags & HL_ATTRIB_BOLD) {
+		text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
+	}
+	if (hl_attribs->flags & HL_ATTRIB_STRIKETHROUGH) {
+		text_layout->SetStrikethrough(true, range);
+	}
+	if (hl_attribs->flags & HL_ATTRIB_UNDERLINE) {
+		text_layout->SetUnderline(true, range);
+	}
+	if (hl_attribs->flags & HL_ATTRIB_UNDERCURL) {
+		text_layout->SetUnderline(true, range);
 	}
 }
 
-void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
-	renderer->render_target->BeginDraw();
-	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
+void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
+	ID2D1SolidColorBrush *brush = [=]() {
+		if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
+			return hl_attribs->foreground == DEFAULT_COLOR ?
+				renderer->brushes.at(renderer->hl_attribs[0].foreground) :
+				renderer->brushes.at(hl_attribs->foreground);
+		}
+		else {
+			return hl_attribs->background == DEFAULT_COLOR ?
+				renderer->brushes.at(renderer->hl_attribs[0].background) :
+				renderer->brushes.at(hl_attribs->background);
+		}
+	}();
 
-	wchar_t wstr_text[8096];
+	ID2D1SolidColorBrush *brush2;
+	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::Red),
+		&brush2
+	));
+	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+	renderer->render_target->FillRectangle(&rect, brush);
+	renderer->render_target->DrawRectangle(&rect, brush2);
+	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+}
+
+void DrawForegroundText(Renderer *renderer, wchar_t *text, uint32_t text_length,
+	D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
+	IDWriteTextLayout *text_layout = nullptr;
+	WIN_CHECK(renderer->write_factory->CreateTextLayout(
+		text,
+		text_length,
+		renderer->text_format,
+		rect.right - rect.left,
+		rect.bottom - rect.top,
+		&text_layout
+	));
+	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, text_length);
+
+	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
+	renderer->render_target->DrawTextLayout(
+		{ rect.left, rect.top },
+		text_layout,
+		default_brush,
+		D2D1_DRAW_TEXT_OPTIONS_CLIP
+	);
+
+	text_layout->Release();
+}
+
+void DrawGridLine(Renderer *renderer, uint32_t row) {
+	uint32_t base = row * renderer->grid_width;
+	D2D1_RECT_F rect {
+		.left = 0 * renderer->font_width,
+		.top = row * renderer->font_height,
+		.right = renderer->grid_width * renderer->font_width,
+		.bottom = (row * renderer->font_height) + renderer->font_height
+	};
+
+	IDWriteTextLayout *text_layout = nullptr;
+	WIN_CHECK(renderer->write_factory->CreateTextLayout(
+		&renderer->grid_chars[base],
+		renderer->grid_width,
+		renderer->text_format,
+		rect.right - rect.left,
+		rect.bottom - rect.top,
+		&text_layout
+	));
+
+	uint8_t hl_attrib_id = renderer->grid_hl_attrib_ids[base];
+	uint32_t col_offset = 0;
+	for (uint32_t i = 0; i < renderer->grid_width; ++i) {
+		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
+			D2D1_RECT_F rect {
+				.left = col_offset * renderer->font_width,
+				.top = row * renderer->font_height,
+				.right = col_offset * renderer->font_width + renderer->font_width * (i - col_offset),
+				.bottom = (row * renderer->font_height) + renderer->font_height
+			};
+			DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
+			ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, i);
+
+			hl_attrib_id = renderer->grid_hl_attrib_ids[base + i];
+			col_offset = i;
+		}
+	}
+	if (col_offset != renderer->grid_width - 1) {
+		D2D1_RECT_F rect {
+			.left = col_offset * renderer->font_width,
+			.top = row * renderer->font_height,
+			.right = renderer->font_width * renderer->grid_width,
+			.bottom = (row * renderer->font_height) + renderer->font_height
+		};
+		DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
+		ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_width);
+	}
+
+	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
+	renderer->render_target->DrawTextLayout(
+		{ rect.left, rect.top },
+		text_layout,
+		default_brush,
+		D2D1_DRAW_TEXT_OPTIONS_CLIP
+	);
+
+	text_layout->Release();
+}
+
+void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
+	assert(renderer->grid_chars != nullptr);
+	assert(renderer->grid_hl_attrib_ids != nullptr);
 
 	uint32_t line_count = static_cast<uint32_t>(mpack_node_array_length(grid_lines));
 	for (uint32_t i = 1; i < line_count; ++i) {
 		mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
 
-		int64_t grid = mpack_node_array_at(grid_line, 0).data->value.i;
-		int64_t row = mpack_node_array_at(grid_line, 1).data->value.i;
-		int64_t col_start = mpack_node_array_at(grid_line, 2).data->value.i;
+		uint32_t row = static_cast<uint32_t>(mpack_node_array_at(grid_line, 1).data->value.i);
+		uint32_t col_start = static_cast<uint32_t>(mpack_node_array_at(grid_line, 2).data->value.i);
 
 		mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
 		uint32_t cells_array_length = static_cast<uint32_t>(mpack_node_array_length(cells_array));
 
-		HighlightAttribute *hl_id = &renderer->hl_attribs[0];
+		uint32_t hl_attrib_id = 0;
 		for (uint32_t j = 0; j < cells_array_length; ++j) {
 			mpack_node_t cells = mpack_node_array_at(cells_array, j);
 			uint32_t cells_length = static_cast<uint32_t>(mpack_node_array_length(cells));
 
 			mpack_node_t text = mpack_node_array_at(cells, 0);
 			const char *str = mpack_node_str(text);
-			uint64_t strlen = mpack_node_strlen(text);
+			uint32_t strlen = static_cast<uint32_t>(mpack_node_strlen(text));
+
+			assert(strncmp(str, "", strlen));
 
 			if (cells_length > 1) {
-				hl_id = &renderer->hl_attribs[mpack_node_array_at(cells, 1).data->value.u];
+				hl_attrib_id = static_cast<uint32_t>(mpack_node_array_at(cells, 1).data->value.u);
 			}
 
 			uint32_t repeat = 1;
@@ -263,55 +347,153 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				repeat = static_cast<uint32_t>(mpack_node_array_at(cells, 2).data->value.u);
 			}
 
+			uint32_t wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
+			uint32_t wstrlen_with_repetitions = static_cast<uint64_t>(wstrlen) * repeat;
+
+			uint32_t offset = row * renderer->grid_width + col_start;
+			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
 			for (uint32_t k = 0; k < repeat; ++k) {
-				for (int l = 0; l < strlen; ++l) {
-					wstr_text[l + k * strlen] = static_cast<wchar_t>(str[l]);
-				}
-			}
-			// Extra byte ensures a null-terminated string
-			wstr_text[strlen * repeat] = L'\0';
-
-			// Calculate the rectangle that covers the current cells
-			D2D1_RECT_F cells_rect {
-				.left = col_start * renderer->font_width,
-				.top = row * renderer->font_height,
-				.right = col_start * renderer->font_width + renderer->font_width * lstrlen(wstr_text),
-				.bottom = (row * renderer->font_height) + renderer->font_height
-			};
-
-			ID2D1SolidColorBrush *background_brush = hl_id->background == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].background) :
-				renderer->brushes.at(hl_id->background);
-			ID2D1SolidColorBrush *foreground_brush = hl_id->foreground == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].foreground) :
-				renderer->brushes.at(hl_id->foreground);
-
-			if (hl_id->flags & HL_ATTRIB_REVERSE) {
-				ID2D1SolidColorBrush *temp = background_brush;
-				background_brush = foreground_brush;
-				foreground_brush = temp;
+				uint32_t idx = offset + (k * wstrlen);
+				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_width * renderer->grid_height) - idx);
 			}
 
-			// Rectangles (background) should be drawn without anti-antialiasing to retain sharpness
-			renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
-			renderer->render_target->FillRectangle(&cells_rect, background_brush);
-			renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
-			DrawTextWithFlags(renderer, wstr_text, cells_rect, foreground_brush, hl_id->flags);
-			col_start += strlen * repeat;
+			col_start += wstrlen_with_repetitions;
 		}
 	}
-	renderer->render_target->EndDraw();
-	renderer->render_target->Flush();
+
+	for (uint32_t i = 1; i < line_count; ++i) {
+		mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
+		uint32_t row = static_cast<uint32_t>(mpack_node_array_at(grid_line, 1).data->value.i);
+		DrawGridLine(renderer, row);
+	}
+}
+
+void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
+	mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
+	uint64_t grid_width = mpack_node_array_at(grid_resize_params, 1).data->value.u;
+	uint64_t grid_height = mpack_node_array_at(grid_resize_params, 2).data->value.u;
+
+	if (renderer->grid_chars == nullptr ||
+		renderer->grid_hl_attrib_ids == nullptr ||
+		renderer->grid_width != grid_width ||
+		renderer->grid_height != grid_height) {
+		renderer->grid_chars = reinterpret_cast<wchar_t *>(calloc(grid_width * grid_height, sizeof(wchar_t)));
+		renderer->grid_hl_attrib_ids = reinterpret_cast<uint8_t *>(calloc(grid_width * grid_height, sizeof(uint8_t)));
+	}
+}
+
+D2D1_RECT_F GetCursorRect(Renderer *renderer) {
+	D2D1_RECT_F rect = renderer->cursor.cell_rect;
+	if (renderer->cursor.mode_info) {
+		switch (renderer->cursor.mode_info->shape) {
+		case CursorShape::None: {
+		} return rect;
+		case CursorShape::Block: {
+		} return rect;
+		case CursorShape::Vertical: {
+			rect.right -= (1 - renderer->cursor.mode_info->cell_percentage * 0.5f) * renderer->font_width;
+		} return rect;
+		case CursorShape::Horizontal: {
+			rect.top += (1 - renderer->cursor.mode_info->cell_percentage * 0.5f) * renderer->font_height;
+		} return rect;
+		}
+	}
+	return rect;
+}
+
+void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
+	// Redraw line before moving cursor
+	DrawGridLine(renderer, renderer->cursor.row);
+
+	mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
+	renderer->cursor.row = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 1).data->value.u);
+	renderer->cursor.col = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 2).data->value.u);
+	renderer->cursor.grid_offset = renderer->cursor.row * renderer->grid_width + renderer->cursor.col;
+	renderer->cursor.cell_rect = D2D1_RECT_F {
+		.left = renderer->cursor.col * renderer->font_width,
+		.top = renderer->cursor.row * renderer->font_height,
+		.right = renderer->cursor.col * renderer->font_width + renderer->font_width,
+		.bottom = renderer->cursor.row * renderer->font_height + renderer->font_height
+	};
+}
+
+void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
+	mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
+	renderer->cursor.mode_info = &renderer->cursor_mode_infos[mpack_node_array_at(mode_change_params, 1).data->value.u];
+}
+
+void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params) {
+	mpack_node_t mode_info_params = mpack_node_array_at(mode_info_set_params, 1);
+	mpack_node_t mode_infos = mpack_node_array_at(mode_info_params, 1);
+	uint32_t mode_infos_length = static_cast<uint32_t>(mpack_node_array_length(mode_infos));
+	assert(mode_infos_length <= MAX_CURSOR_MODE_INFOS);
+
+	for (uint32_t i = 0; i < mode_infos_length; ++i) {
+		mpack_node_t mode_info_map = mpack_node_array_at(mode_infos, i);
+
+		renderer->cursor_mode_infos[i].shape = CursorShape::None;
+		mpack_node_t cursor_shape = mpack_node_map_cstr_optional(mode_info_map, "cursor_shape");
+		if (!mpack_node_is_missing(cursor_shape)) {
+			const char *cursor_shape_str = mpack_node_str(cursor_shape);
+			uint64_t strlen = mpack_node_strlen(cursor_shape);
+			if (!strncmp(cursor_shape_str, "block", strlen)) {
+				renderer->cursor_mode_infos[i].shape = CursorShape::Block;
+			}
+			else if (!strncmp(cursor_shape_str, "vertical", strlen)) {
+				renderer->cursor_mode_infos[i].shape = CursorShape::Vertical;
+			}
+			else if (!strncmp(cursor_shape_str, "horizontal", strlen)) {
+				renderer->cursor_mode_infos[i].shape = CursorShape::Horizontal;
+			}
+		}
+
+		renderer->cursor_mode_infos[i].cell_percentage = 0;
+		mpack_node_t cell_percentage = mpack_node_map_cstr_optional(mode_info_map, "cell_percentage");
+		if (!mpack_node_is_missing(cell_percentage)) {
+			renderer->cursor_mode_infos[i].cell_percentage = static_cast<float>(cell_percentage.data->value.u) / 100.0f;
+		}
+
+		renderer->cursor_mode_infos[i].hl_attrib_index = 0;
+		mpack_node_t hl_ttrib_index = mpack_node_map_cstr_optional(mode_info_map, "attr_id");
+		if (!mpack_node_is_missing(hl_ttrib_index)) {
+			renderer->cursor_mode_infos[i].hl_attrib_index = static_cast<uint32_t>(hl_ttrib_index.data->value.u);
+		}
+	}
+}
+
+void DrawCursor(Renderer *renderer) {
+	HighlightAttributes hl_attribs = renderer->hl_attribs[renderer->cursor.mode_info->hl_attrib_index];
+	wchar_t cursor_char = renderer->grid_chars[renderer->cursor.grid_offset];
+
+	DrawBackgroundRect(renderer, renderer->cursor.cell_rect, &renderer->hl_attribs[renderer->grid_hl_attrib_ids[renderer->cursor.grid_offset]]);
+	DrawForegroundText(renderer, &cursor_char, 1, renderer->cursor.cell_rect, &renderer->hl_attribs[renderer->grid_hl_attrib_ids[renderer->cursor.grid_offset]]);
+
+	if (renderer->cursor.mode_info->hl_attrib_index == 0) {
+		hl_attribs.flags ^= HL_ATTRIB_REVERSE;
+	}
+	
+	D2D1_RECT_F cursor_rect = GetCursorRect(renderer);
+	DrawBackgroundRect(renderer, cursor_rect, &hl_attribs);
+	DrawForegroundText(renderer, &cursor_char, 1, cursor_rect, &hl_attribs);
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
+	renderer->render_target->BeginDraw();
+	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
+
 	uint32_t redraw_commands_length = static_cast<uint32_t>(mpack_node_array_length(params));
+
 	for (uint32_t i = 0; i < redraw_commands_length; ++i) {
 		mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
 		mpack_node_t redraw_command_name = mpack_node_array_at(redraw_command_arr, 0);
 
-		if (MPackMatchString(redraw_command_name, "default_colors_set")) {
+		if (MPackMatchString(redraw_command_name, "grid_resize")) {
+			UpdateGridSize(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
+			UpdateDefaultColors(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
@@ -320,5 +502,22 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		else if (MPackMatchString(redraw_command_name, "grid_line")) {
 			DrawGridLines(renderer, redraw_command_arr);
 		}
+		else if (MPackMatchString(redraw_command_name, "grid_cursor_goto")) {
+			UpdateCursorPos(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "mode_info_set")) {
+			UpdateCursorModeInfos(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "mode_change")) {
+			UpdateCursorMode(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
+			//__debugbreak();
+		}
 	}
+
+	DrawCursor(renderer);
+
+	renderer->render_target->EndDraw();
+	renderer->render_target->Flush();
 }

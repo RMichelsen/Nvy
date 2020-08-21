@@ -26,6 +26,7 @@ void MPackSendRequest(Nvim *nvim, NvimMethod method, std::function<void(mpack_wr
 
 	mpack_finish_array(&writer);
 
+	// TODO: Error Handle
 	if (mpack_writer_destroy(&writer) != mpack_ok) {
 		fprintf(stderr, "An error occurred encoding the data!\n");
 		return;
@@ -59,6 +60,7 @@ void MPackSendNotification(Nvim *nvim, NvimOutboundNotification notification, st
 
 	mpack_finish_array(&writer);
 
+	// TODO: Error Handle
 	if (mpack_writer_destroy(&writer) != mpack_ok) {
 		fprintf(stderr, "An error occurred encoding the data!\n");
 		return;
@@ -78,26 +80,33 @@ static uint64_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 	if (!success) {
 		mpack_tree_flag_error(tree, mpack_error_io);
 	}
+	printf("Bytes read %u\n", bytes_read);
 	return static_cast<uint64_t>(bytes_read);
 }
 
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
 	Nvim *nvim = reinterpret_cast<Nvim *>(param);
+	mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, 1024 * 4096, 4096 * 4);
 
 	while(true) {
-		mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
-		mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, 1024 * 4096, 4096 * 4);
-
 		mpack_tree_parse(tree);
-		auto err = mpack_tree_error(tree);
 		if (mpack_tree_error(tree) != mpack_ok) {
 			break;
 		}
 
-		PostMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(tree), 0);
+		void *msg_data = malloc(tree->data_length);
+		memcpy(msg_data, tree->data, tree->data_length);
+		mpack_tree_t *msg_tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+		mpack_tree_init_data(msg_tree, static_cast<char *>(msg_data), tree->data_length);
+		mpack_tree_parse(msg_tree);
+
+		PostMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(msg_tree), 0);
 	}
 
 	// TODO: Error handle
+	mpack_tree_destroy(tree);
+	free(tree);
 	printf("Nvim Message Handler Died\n");
 	return 0;
 }

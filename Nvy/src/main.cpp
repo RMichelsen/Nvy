@@ -19,7 +19,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 		// TODO: handle error
 		assert(mpack_node_array_at(root, 2).data->type == mpack_type_nil);
 		mpack_node_t result = mpack_node_array_at(root, 3);
-
+		
 		assert(context->nvim->msg_id_to_method.size() >= msg_id);
 		switch (context->nvim->msg_id_to_method[msg_id]) {
 		case NvimMethod::vim_get_api_info: {
@@ -33,6 +33,8 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	else if (message_type == NvimMessageType::Notification) {
 		mpack_node_t name = mpack_node_array_at(root, 1);
 		mpack_node_t params = mpack_node_array_at(root, 2);
+		const char *str = mpack_node_str(name);
+		int strlen = static_cast<int>(mpack_node_strlen(name));
 
 		if (MPackMatchString(name, "redraw")) {
 			RendererRedraw(context->renderer, params);
@@ -71,31 +73,43 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		// Special case for <LT>
 		if (wparam == 0x3C) {
 			NvimSendInput(context->nvim, "<LT>");
+			printf("Input: <LT>\n");
 		}
 		else if (wparam >= 0x20 && wparam <= 0x7E) {
 			NvimSendInput(context->nvim, static_cast<char>(wparam));
+			printf("Input: %c\n", static_cast<char>(wparam));
 		}
 	} return 0;
 	case WM_KEYDOWN: {
 		std::string input_string = "<";
 
-		if ((GetKeyState(VK_SHIFT) & 0x80) != 0) {
+		bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+		bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+		bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+
+		if (shift_down) {
 			input_string += "S-";
 		}
-		if ((GetKeyState(VK_CONTROL) & 0x80) != 0) {
+		if (ctrl_down) {
 			input_string += "C-";
 		}
-		if ((GetKeyState(VK_MENU) & 0x80) != 0) {
+		if (alt_down) {
 			input_string += "M-";
 		}
 
 		int virtual_key = static_cast<int>(wparam);
 		switch (virtual_key) {
+		case VK_SHIFT: {
+		} return 0;
+		case VK_CONTROL: {
+		} return 0;
+		case VK_MENU: {
+		} return 0;
 		case VK_BACK: {
 			input_string += "BS";
 		} break;
 		case VK_TAB: {
-			input_string += "TAB";
+			input_string += "Tab";
 		} break;
 		case VK_RETURN: {
 			input_string += "CR";
@@ -115,18 +129,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		case VK_END: {
 			input_string += "End";
 		} break;
+		case VK_LEFT: {
+			input_string += "Left";
+		} break;
+		case VK_UP: {
+			input_string += "Up";
+		} break;
+		case VK_RIGHT: {
+			input_string += "Right";
+		} break;
+		case VK_DOWN: {
+			input_string += "Down";
+		} break;
 		case VK_INSERT: {
 			input_string += "Insert";
 		} break;
 		case VK_DELETE: {
 			input_string += "Del";
 		} break;
+		default: {
+			if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
+				(ctrl_down || alt_down)) {
+				input_string += static_cast<char>(virtual_key |= 32);
+			}
+			else {
+				return 0;
+			}
+		} break;
 		}
 
 		input_string += ">";
 
 		NvimSendInput(context->nvim, input_string.c_str());
-	}
+		printf("Input: %s\n", input_string.c_str());
+	} return 0;
 	//case WM_MOUSEMOVE:
 	//	Input::mouse_pos[0] = static_cast<float>(GET_X_LPARAM(lparam));
 	//	Input::mouse_pos[1] = static_cast<float>(GET_Y_LPARAM(lparam));
@@ -184,8 +220,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		2560,
-		1440,
+		CW_USEDEFAULT,
+		CW_USEDEFAULT,
 		nullptr,
 		nullptr,
 		instance,
@@ -195,7 +231,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Fira Code Retina", 20.0f);
+	RendererInitialize(&renderer, hwnd, L"Fira Code", 30.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);
@@ -213,7 +249,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	}
 
 	//CoUninitialize();
-
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);

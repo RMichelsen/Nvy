@@ -19,6 +19,3 @@
 
 // WPARAM: mpack_tree_t *, LPARAM: none
 #define WM_NVIM_MESSAGE WM_USER
-
-// WPARAM: api_level, LPARAM: none
-//#define WM_NVIM_SET_API_LEVEL WM_USER
