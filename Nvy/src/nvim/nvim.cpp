@@ -171,16 +171,28 @@ void NvimShutdown(Nvim *nvim) {
 	CloseHandle(nvim->process_info.hProcess);
 }
 
-void NvimUIAttach(Nvim *nvim, uint32_t grid_width, uint32_t grid_height) {
+void NvimSendUIAttach(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols) {
 	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_attach,
 		[=](mpack_writer_t *writer) {
 			mpack_start_array(writer, 3);
-			mpack_write_int(writer, grid_width);
-			mpack_write_int(writer, grid_height);
+			mpack_write_int(writer, grid_cols);
+			mpack_write_int(writer, grid_rows);
 			mpack_start_map(writer, 1);
 			mpack_write_cstr(writer, "ext_linegrid");
 			mpack_write_true(writer);
 			mpack_finish_map(writer);
+			mpack_finish_array(writer);
+		}
+	);
+}
+
+void NvimSendResize(Nvim *nvim, uint32_t grid_rows, uint32_t grid_cols) {
+	MPackSendNotification(nvim, NvimOutboundNotification::nvim_ui_try_resize_grid,
+		[=](mpack_writer_t *writer) {
+			mpack_start_array(writer, 3);
+			mpack_write_int(writer, 1);
+			mpack_write_int(writer, grid_cols);
+			mpack_write_int(writer, grid_rows);
 			mpack_finish_array(writer);
 		}
 	);

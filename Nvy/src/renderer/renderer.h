@@ -25,8 +25,8 @@ enum class CursorShape {
 	Horizontal
 };
 struct CursorPos {
-	int row;
-	int col;
+	uint32_t row;
+	uint32_t col;
 };
 struct CursorModeInfo {
 	CursorShape shape;
@@ -60,16 +60,19 @@ struct Renderer {
 
 	D2D1_SIZE_U pixel_size;
 
-	uint32_t grid_width;
-	uint32_t grid_height;
+	uint32_t grid_rows;
+	uint32_t grid_cols;
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size);
+void RendererShutdown(Renderer *renderer);
 
+void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
 void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta);
 void RendererUpdateFontMetrics(Renderer *renderer);
+
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params);

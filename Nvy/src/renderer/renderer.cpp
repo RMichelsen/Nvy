@@ -30,14 +30,26 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 	};
 	D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
 		.hwnd = hwnd,
-		.pixelSize = renderer->pixel_size,
-		.presentOptions = D2D1_PRESENT_OPTIONS_IMMEDIATELY
+		.pixelSize = renderer->pixel_size
 	};
 
 	WIN_CHECK(renderer->d2d_factory->CreateHwndRenderTarget(target_props, hwnd_props, &renderer->render_target));
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
 
 	RendererUpdateTextFormat(renderer, 0.0f);
+}
+
+void RendererShutdown(Renderer *renderer) {
+	// TODO: DirectX cleanup??
+
+	free(renderer->grid_chars);
+	free(renderer->grid_hl_attrib_ids);
+}
+
+void RendererResize(Renderer *renderer, uint32_t width, uint32_t height) {
+	renderer->pixel_size.width = width;
+	renderer->pixel_size.height = height;
+	WIN_CHECK(renderer->render_target->Resize(&renderer->pixel_size));
 }
 
 void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta) {
@@ -83,15 +95,12 @@ void RendererUpdateFontMetrics(Renderer *renderer) {
 
 	renderer->font_width = metrics.width;
 	renderer->font_height = metrics.height;
-
-	renderer->grid_width = static_cast<uint32_t>(renderer->pixel_size.width / renderer->font_width);
-	renderer->grid_height = static_cast<uint32_t>(renderer->pixel_size.height / renderer->font_height);
 }
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {
 	return CursorPos {
-		.row = static_cast<int>(mouse_pos.y / renderer->font_height),
-		.col = static_cast<int>(mouse_pos.x / renderer->font_width)
+		.row = static_cast<uint32_t>(mouse_pos.y / renderer->font_height),
+		.col = static_cast<uint32_t>(mouse_pos.x / renderer->font_width)
 	};
 }
 
@@ -258,18 +267,18 @@ void DrawForegroundText(Renderer *renderer, wchar_t *text, uint32_t text_length,
 }
 
 void DrawGridLine(Renderer *renderer, uint32_t row) {
-	uint32_t base = row * renderer->grid_width;
+	uint32_t base = row * renderer->grid_cols;
 	D2D1_RECT_F rect {
 		.left = 0 * renderer->font_width,
 		.top = row * renderer->font_height,
-		.right = renderer->grid_width * renderer->font_width,
+		.right = renderer->grid_cols * renderer->font_width,
 		.bottom = (row * renderer->font_height) + renderer->font_height
 	};
 
 	IDWriteTextLayout *text_layout = nullptr;
 	WIN_CHECK(renderer->write_factory->CreateTextLayout(
 		&renderer->grid_chars[base],
-		renderer->grid_width,
+		renderer->grid_cols,
 		renderer->text_format,
 		rect.right - rect.left,
 		rect.bottom - rect.top,
@@ -278,7 +287,7 @@ void DrawGridLine(Renderer *renderer, uint32_t row) {
 
 	uint8_t hl_attrib_id = renderer->grid_hl_attrib_ids[base];
 	uint32_t col_offset = 0;
-	for (uint32_t i = 0; i < renderer->grid_width; ++i) {
+	for (uint32_t i = 0; i < renderer->grid_cols; ++i) {
 		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
 			D2D1_RECT_F rect {
 				.left = col_offset * renderer->font_width,
@@ -293,15 +302,15 @@ void DrawGridLine(Renderer *renderer, uint32_t row) {
 			col_offset = i;
 		}
 	}
-	if (col_offset != renderer->grid_width - 1) {
+	if (col_offset != renderer->grid_cols - 1) {
 		D2D1_RECT_F rect {
 			.left = col_offset * renderer->font_width,
 			.top = row * renderer->font_height,
-			.right = renderer->font_width * renderer->grid_width,
+			.right = renderer->font_width * renderer->grid_cols,
 			.bottom = (row * renderer->font_height) + renderer->font_height
 		};
 		DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
-		ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_width);
+		ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 	}
 
 	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
@@ -352,11 +361,11 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			uint32_t wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
 			uint32_t wstrlen_with_repetitions = static_cast<uint64_t>(wstrlen) * repeat;
 
-			uint32_t offset = row * renderer->grid_width + col_start;
+			uint32_t offset = row * renderer->grid_cols + col_start;
 			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
 			for (uint32_t k = 0; k < repeat; ++k) {
 				uint32_t idx = offset + (k * wstrlen);
-				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_width * renderer->grid_height) - idx);
+				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_cols * renderer->grid_rows) - idx);
 			}
 
 			col_start += wstrlen_with_repetitions;
@@ -372,15 +381,21 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 
 void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 	mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
-	uint64_t grid_width = mpack_node_array_at(grid_resize_params, 1).data->value.u;
-	uint64_t grid_height = mpack_node_array_at(grid_resize_params, 2).data->value.u;
+	uint64_t grid_cols = mpack_node_array_at(grid_resize_params, 1).data->value.u;
+	uint64_t grid_rows = mpack_node_array_at(grid_resize_params, 2).data->value.u;
 
 	if (renderer->grid_chars == nullptr ||
 		renderer->grid_hl_attrib_ids == nullptr ||
-		renderer->grid_width != grid_width ||
-		renderer->grid_height != grid_height) {
-		renderer->grid_chars = reinterpret_cast<wchar_t *>(calloc(grid_width * grid_height, sizeof(wchar_t)));
-		renderer->grid_hl_attrib_ids = reinterpret_cast<uint8_t *>(calloc(grid_width * grid_height, sizeof(uint8_t)));
+		renderer->grid_cols != grid_cols ||
+		renderer->grid_rows != grid_rows) {
+		
+		renderer->grid_cols = static_cast<uint32_t>(grid_cols);
+		renderer->grid_rows = static_cast<uint32_t>(grid_rows);
+
+		renderer->grid_chars = reinterpret_cast<wchar_t *>(calloc(grid_cols * grid_rows, sizeof(wchar_t)));
+		renderer->grid_hl_attrib_ids = reinterpret_cast<uint8_t *>(calloc(grid_cols * grid_rows, sizeof(uint8_t)));
+
+		renderer->render_target->Clear(D2D1::ColorF(renderer->hl_attribs[0].background));
 	}
 }
 
@@ -410,7 +425,7 @@ void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
 	mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
 	renderer->cursor.row = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 1).data->value.u);
 	renderer->cursor.col = static_cast<uint32_t>(mpack_node_array_at(cursor_goto_params, 2).data->value.u);
-	renderer->cursor.grid_offset = renderer->cursor.row * renderer->grid_width + renderer->cursor.col;
+	renderer->cursor.grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
 	renderer->cursor.cell_rect = D2D1_RECT_F {
 		.left = renderer->cursor.col * renderer->font_width,
 		.top = renderer->cursor.row * renderer->font_height,
@@ -476,7 +491,7 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	// Currently nvim does not do any horizontal scrolling
 	assert(cols == 0);
 
-	int buffer_bot_row = static_cast<int>(renderer->grid_height - 3);
+	int buffer_bot_row = static_cast<int>(renderer->grid_rows - 3);
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
@@ -492,14 +507,14 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 		}
 
 		memcpy(
-			&renderer->grid_chars[target_row * renderer->grid_width + left],
-			&renderer->grid_chars[i * renderer->grid_width + left],
+			&renderer->grid_chars[target_row * renderer->grid_cols + left],
+			&renderer->grid_chars[i * renderer->grid_cols + left],
 			(static_cast<uint64_t>(right) - left) * sizeof(wchar_t)
 		);
 
 		memcpy(
-			&renderer->grid_hl_attrib_ids[target_row * renderer->grid_width + left],
-			&renderer->grid_hl_attrib_ids[i * renderer->grid_width + left],
+			&renderer->grid_hl_attrib_ids[target_row * renderer->grid_cols + left],
+			&renderer->grid_hl_attrib_ids[i * renderer->grid_cols + left],
 			static_cast<uint64_t>(right) - left
 		);
 	}
@@ -557,7 +572,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
-			for (uint32_t i = 0; i < renderer->grid_height; ++i) {
+			for (uint32_t i = 0; i < renderer->grid_rows; ++i) {
 				DrawGridLine(renderer, i);
 			}
 		}
@@ -566,5 +581,4 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 	DrawCursor(renderer);
 
 	renderer->render_target->EndDraw();
-	renderer->render_target->Flush();
 }

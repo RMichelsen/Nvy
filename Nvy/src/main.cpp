@@ -26,7 +26,11 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			mpack_node_t top_level_map = mpack_node_array_at(result, 1);
 			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
 			context->nvim->api_level = mpack_node_map_cstr(version_map, "api_level").data->value.u;
-			NvimUIAttach(context->nvim, context->renderer->grid_width, context->renderer->grid_height);
+
+			int requested_rows = static_cast<uint32_t>(context->renderer->pixel_size.height / context->renderer->font_height);
+			int requested_cols = static_cast<uint32_t>(context->renderer->pixel_size.width / context->renderer->font_width);
+			printf("Requested INITAL %u:%u\n", requested_rows, requested_cols);
+			NvimSendUIAttach(context->nvim, requested_rows, requested_cols);
 		} break;
 		}
 	}
@@ -54,11 +58,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	}
 
 	switch (msg) {
-	//case WM_SIZE:
-	//	if (wparam != SIZE_MINIMIZED) {
-	//		HandleResize(renderer, LOWORD(lparam), HIWORD(lparam));
-	//	}
-	//	return 0;
+	case WM_SIZE: {
+		if (wparam != SIZE_MINIMIZED) {
+			uint32_t new_width = LOWORD(lparam);
+			uint32_t new_height = HIWORD(lparam);
+			uint32_t requested_rows = static_cast<uint32_t>(new_height / context->renderer->font_height);
+			uint32_t requested_cols = static_cast<uint32_t>(new_width / context->renderer->font_width);
+			RendererResize(context->renderer, new_width, new_height);
+			NvimSendResize(context->nvim, requested_rows, requested_cols);
+		}
+	} return 0;
 	case WM_DESTROY: {
 		PostQuitMessage(0);
 	} return 0;
@@ -126,8 +135,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 	} return 0;
 	}
-
-
 
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
@@ -197,6 +204,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	}
 
 	//CoUninitialize();
+	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
