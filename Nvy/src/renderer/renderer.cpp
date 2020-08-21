@@ -88,6 +88,13 @@ void RendererUpdateFontMetrics(Renderer *renderer) {
 	renderer->grid_height = static_cast<uint32_t>(renderer->pixel_size.height / renderer->font_height);
 }
 
+CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {
+	return CursorPos {
+		.row = static_cast<int>(mouse_pos.y / renderer->font_height),
+		.col = static_cast<int>(mouse_pos.x / renderer->font_width)
+	};
+}
+
 void CreateBrush(Renderer *renderer, uint32_t color) {
 	ID2D1SolidColorBrush *brush;
 	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(
@@ -465,6 +472,9 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	int right = static_cast<int>(mpack_node_array_at(scroll_region_params, 4).data->value.u);
 	int rows = static_cast<int>(mpack_node_array_at(scroll_region_params, 5).data->value.u);
 	int cols = static_cast<int>(mpack_node_array_at(scroll_region_params, 6).data->value.u);
+
+	// Currently nvim does not do any horizontal scrolling
+	assert(cols == 0);
 
 	int buffer_bot_row = static_cast<int>(renderer->grid_height - 3);
 

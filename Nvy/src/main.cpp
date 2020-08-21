@@ -76,103 +76,58 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 	} return 0;
 	case WM_KEYDOWN: {
-		std::string input_string = "<";
-
-		bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-		bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-		bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
-
-		if (shift_down) {
-			input_string += "S-";
-		}
-		if (ctrl_down) {
-			input_string += "C-";
-		}
-		if (alt_down) {
-			input_string += "M-";
-		}
-
-		int virtual_key = static_cast<int>(wparam);
-		switch (virtual_key) {
-		case VK_SHIFT: {
-		} return 0;
-		case VK_CONTROL: {
-		} return 0;
-		case VK_MENU: {
-		} return 0;
-		case VK_BACK: {
-			input_string += "BS";
-		} break;
-		case VK_TAB: {
-			input_string += "Tab";
-		} break;
-		case VK_RETURN: {
-			input_string += "CR";
-		} break;
-		case VK_ESCAPE: {
-			input_string += "Esc";
-		} break;
-		case VK_PRIOR: {
-			input_string += "PageUp";
-		} break;
-		case VK_NEXT: {
-			input_string += "PageDown";
-		} break;
-		case VK_HOME: {
-			input_string += "Home";
-		} break;
-		case VK_END: {
-			input_string += "End";
-		} break;
-		case VK_LEFT: {
-			input_string += "Left";
-		} break;
-		case VK_UP: {
-			input_string += "Up";
-		} break;
-		case VK_RIGHT: {
-			input_string += "Right";
-		} break;
-		case VK_DOWN: {
-			input_string += "Down";
-		} break;
-		case VK_INSERT: {
-			input_string += "Insert";
-		} break;
-		case VK_DELETE: {
-			input_string += "Del";
-		} break;
-		default: {
-			if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
-				(ctrl_down || alt_down)) {
-				input_string += static_cast<char>(virtual_key |= 32);
-			}
-			else {
-				return 0;
-			}
-		} break;
-		}
-
-		input_string += ">";
-		NvimSendInput(context->nvim, input_string.c_str());
+		NvimSendInput(context->nvim, static_cast<int>(wparam));
 	} return 0;
-	//case WM_MOUSEMOVE:
-	//	Input::mouse_pos[0] = static_cast<float>(GET_X_LPARAM(lparam));
-	//	Input::mouse_pos[1] = static_cast<float>(GET_Y_LPARAM(lparam));
-	//	return 0;
-	//case WM_LBUTTONDOWN:
-	//	Input::mouse_buttons[0] = true;
-	//	return 0;
-	//case WM_RBUTTONDOWN:
-	//	Input::mouse_buttons[1] = true;
-	//	return 0;
-	//case WM_LBUTTONUP:
-	//	Input::mouse_buttons[0] = false;
-	//	return 0;
-	//case WM_RBUTTONUP:
-	//	Input::mouse_buttons[1] = false;
-	//	return 0;
+	case WM_MOUSEMOVE: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		switch (wparam) {
+		case MK_LBUTTON: {
+			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+		} break;
+		case MK_MBUTTON: {
+			NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+		} break;
+		case MK_RBUTTON: {
+			NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+		} break;
+		}
+	} return 0;
+	case WM_LBUTTONDOWN: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Press, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_RBUTTONDOWN: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Press, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_MBUTTONDOWN: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Press, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_LBUTTONUP: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Release, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_RBUTTONUP: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Release, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_MBUTTONUP: {
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Release, cursor_pos.row, cursor_pos.col);
+	} return 0;
+	case WM_MOUSEWHEEL: {
+		short wheel_delta = GET_WHEEL_DELTA_WPARAM(wparam);
+		if (wheel_delta > 0) {
+			NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelUp, 0, 0);
+		}
+		else {
+			NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelDown, 0, 0);
+		}
+	} return 0;
 	}
+
+
 
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }

@@ -24,6 +24,10 @@ enum class CursorShape {
 	Vertical,
 	Horizontal
 };
+struct CursorPos {
+	int row;
+	int col;
+};
 struct CursorModeInfo {
 	CursorShape shape;
 	float cell_percentage;
@@ -66,5 +70,6 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 
 void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta);
 void RendererUpdateFontMetrics(Renderer *renderer);
+CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
