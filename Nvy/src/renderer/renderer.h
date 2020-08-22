@@ -35,7 +35,6 @@ struct CursorModeInfo {
 };
 struct Cursor {
 	CursorModeInfo *mode_info;
-	D2D1_RECT_F cell_rect;
 	int row;
 	int col;
 	int grid_offset;
@@ -49,17 +48,17 @@ struct Renderer {
 
 	ID2D1Factory *d2d_factory;
 	ID2D1HwndRenderTarget *render_target;
-	IDWriteFactory *write_factory;
+	IDWriteFactory1 *write_factory;
 	IDWriteTextFormat *text_format;
 
 	float dpi_scale;
 	const wchar_t *font;
+	DWRITE_FONT_METRICS1 font_metrics;
 	float font_size;
 	float font_height;
 	float font_width;
 
 	D2D1_SIZE_U pixel_size;
-
 	int grid_rows;
 	int grid_cols;
 	wchar_t *grid_chars;
@@ -70,8 +69,8 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 void RendererShutdown(Renderer *renderer);
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
-void RendererUpdateTextFormat(Renderer *renderer, float font_size_delta);
-void RendererUpdateFontMetrics(Renderer *renderer);
+
+void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size_delta);
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
 

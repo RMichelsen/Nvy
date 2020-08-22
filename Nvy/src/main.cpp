@@ -202,7 +202,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Consolas", 30.0f);
+	RendererInitialize(&renderer, hwnd, L"Fira Code", 30.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);
@@ -210,11 +210,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	Context context {
 		.nvim = &nvim,
 		.renderer = &renderer,
-		.saved_window_placement = WINDOWPLACEMENT {.length = sizeof(WINDOWPLACEMENT) },
-		.cached_cursor_pos {
-			.row = -1,
-			.col = -1
-		}
+		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
 	};
 	SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&context));
 
