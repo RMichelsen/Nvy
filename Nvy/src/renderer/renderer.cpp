@@ -334,28 +334,20 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 
 void DrawCursor(Renderer *renderer) {
 	wchar_t character_under_cursor = renderer->grid_chars[renderer->cursor.grid_offset];
-	HighlightAttributes text_hl_attribs = renderer->hl_attribs[renderer->grid_hl_attrib_ids[renderer->cursor.grid_offset]];
-
 	int double_width_char_factor = GetCharacterWidth(renderer, character_under_cursor) > renderer->font_width ? 2 : 1;
-	D2D1_RECT_F cursor_bg_rect {
-		.left = renderer->cursor.col * renderer->font_width,
-		.top = renderer->cursor.row * renderer->font_height,
-		.right = renderer->cursor.col * renderer->font_width + renderer->font_width * double_width_char_factor,
-		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
-	};
-
-	if (renderer->cursor.mode_info->shape != CursorShape::Block) {
-		DrawBackgroundRect(renderer, cursor_bg_rect, &text_hl_attribs);
-		DrawSingleCharacter(renderer, cursor_bg_rect, character_under_cursor, &text_hl_attribs);
-	}
-
-
+	
 	HighlightAttributes cursor_hl_attribs = renderer->hl_attribs[renderer->cursor.mode_info->hl_attrib_index];
 	if (renderer->cursor.mode_info->hl_attrib_index == 0) {
 		cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
 	}
 
-	D2D1_RECT_F cursor_fg_rect = GetCursorForegroundRect(renderer, cursor_bg_rect);
+	D2D1_RECT_F cursor_rect {
+		.left = renderer->cursor.col * renderer->font_width,
+		.top = renderer->cursor.row * renderer->font_height,
+		.right = renderer->cursor.col * renderer->font_width + renderer->font_width * double_width_char_factor,
+		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
+	};
+	D2D1_RECT_F cursor_fg_rect = GetCursorForegroundRect(renderer, cursor_rect);
 	DrawBackgroundRect(renderer, cursor_fg_rect, &cursor_hl_attribs);
 	DrawSingleCharacter(renderer, cursor_fg_rect, character_under_cursor, &cursor_hl_attribs);
 }
