@@ -78,8 +78,8 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 }
 
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
-	Nvim *nvim = reinterpret_cast<Nvim *>(param);
-	mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+	Nvim *nvim = static_cast<Nvim *>(param);
+	mpack_tree_t *tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
 	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, 1024 * 4096, 4096 * 4);
 
 	while (true) {
@@ -98,10 +98,25 @@ DWORD WINAPI NvimMessageHandler(LPVOID param) {
 	return 0;
 }
 
+DWORD WINAPI NvimProcessMonitor(LPVOID param) {
+	Nvim *nvim = static_cast<Nvim *>(param);
+	while (true) {
+		DWORD exit_code;
+		if (GetExitCodeProcess(nvim->process_info.hProcess, &exit_code) && exit_code == STILL_ACTIVE) {
+			Sleep(1);
+		}
+		else {
+			break;
+		}
+	}
+	PostMessage(nvim->hwnd, WM_DESTROY, 0, 0);
+	return 0;
+}
+
 void NvimInitialize(Nvim *nvim, HWND hwnd) {
 	nvim->hwnd = hwnd;
 	
-	HANDLE job_object = CreateJobObject(nullptr, nullptr);
+	HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info {
 		.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
 			.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
@@ -125,13 +140,13 @@ void NvimInitialize(Nvim *nvim, HWND hwnd) {
 	};
 
 	wchar_t command_line[] = L"nvim --embed";
-	CreateProcess(
+	CreateProcessW(
 		nullptr,
 		command_line,
 		nullptr,
 		nullptr,
 		true,
-		0,
+		CREATE_NO_WINDOW,
 		nullptr,
 		nullptr,
 		&startup_info,
@@ -139,27 +154,38 @@ void NvimInitialize(Nvim *nvim, HWND hwnd) {
 	);
 	AssignProcessToJobObject(job_object, nvim->process_info.hProcess);
 
-	DWORD thread_id;
-	HANDLE thread = CreateThread(
+	DWORD _;
+	CreateThread(
 		nullptr,
 		0,
 		NvimMessageHandler,
 		nvim,
 		0,
-		&thread_id
+		&_
+	);
+	CreateThread(
+		nullptr,
+		0, NvimProcessMonitor,
+		nvim,
+		0, &_
 	);
 
 	MPackSendRequest(nvim, NvimMethod::vim_get_api_info);
 }
 
 void NvimShutdown(Nvim *nvim) {
-	CloseHandle(nvim->stdin_read);
-	CloseHandle(nvim->stdin_write);
-	CloseHandle(nvim->stdout_read);
-	CloseHandle(nvim->stdout_write);
-	CloseHandle(nvim->process_info.hThread);
-	TerminateProcess(nvim->process_info.hProcess, 0);
-	CloseHandle(nvim->process_info.hProcess);
+	DWORD exit_code;
+	GetExitCodeProcess(nvim->process_info.hProcess, &exit_code);
+
+	if(exit_code == STILL_ACTIVE) {
+		CloseHandle(nvim->stdin_read);
+		CloseHandle(nvim->stdin_write);
+		CloseHandle(nvim->stdout_read);
+		CloseHandle(nvim->stdout_write);
+		CloseHandle(nvim->process_info.hThread);
+		TerminateProcess(nvim->process_info.hProcess, 0);
+		CloseHandle(nvim->process_info.hProcess);
+	}
 }
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {

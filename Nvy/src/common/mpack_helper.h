@@ -61,5 +61,6 @@ inline MPackMessageResult MPackExtractMessageResult(mpack_tree_t *tree) {
 			}
 		};
 	}
+
 	return MPackMessageResult {};
 }

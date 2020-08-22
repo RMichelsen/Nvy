@@ -7,6 +7,7 @@ struct Context {
 	Nvim *nvim;
 	Renderer *renderer;
 	WINDOWPLACEMENT saved_window_placement;
+	CursorPos cached_cursor_pos;
 };
 
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
@@ -20,8 +21,6 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
 			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
 			assert(api_level > 6);
-
-			mpack_node_print_to_stdout(result.params);
 
 			int requested_rows = static_cast<int>(context->renderer->pixel_size.height / context->renderer->font_height);
 			int requested_cols = static_cast<int>(context->renderer->pixel_size.width / context->renderer->font_width);
@@ -104,16 +103,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	} return 0;
 	case WM_MOUSEMOVE: {
 		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
-		switch (wparam) {
-		case MK_LBUTTON: {
-			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
-		} break;
-		case MK_MBUTTON: {
-			NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
-		} break;
-		case MK_RBUTTON: {
-			NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
-		} break;
+		if (context->cached_cursor_pos.col != cursor_pos.col || context->cached_cursor_pos.row != cursor_pos.row) {
+			switch (wparam) {
+			case MK_LBUTTON: {
+				NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+			} break;
+			case MK_MBUTTON: {
+				NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+			} break;
+			case MK_RBUTTON: {
+				NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+			} break;
+			}
+			context->cached_cursor_pos = cursor_pos;
 		}
 	} return 0;
 	case WM_LBUTTONDOWN: {
@@ -165,7 +167,6 @@ void OpenConsole() {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 	OpenConsole();
-	//WIN_CHECK(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
@@ -201,7 +202,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Fira Code", 30.0f);
+	RendererInitialize(&renderer, hwnd, L"Consolas", 30.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);
@@ -209,7 +210,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	Context context {
 		.nvim = &nvim,
 		.renderer = &renderer,
-		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
+		.saved_window_placement = WINDOWPLACEMENT {.length = sizeof(WINDOWPLACEMENT) },
+		.cached_cursor_pos {
+			.row = -1,
+			.col = -1
+		}
 	};
 	SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&context));
 
@@ -219,7 +224,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		DispatchMessage(&msg);
 	}
 
-	//CoUninitialize();
 	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);

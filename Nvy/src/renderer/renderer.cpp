@@ -124,17 +124,21 @@ void CreateBrush(Renderer *renderer, uint32_t color) {
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
-	mpack_node_t color_arr = mpack_node_array_at(default_colors, 1);
+	size_t default_colors_arr_length = mpack_node_array_length(default_colors);
 
-	// Default colors occupy the first index of the highlight attribs array
-	renderer->hl_attribs[0].foreground = static_cast<uint32_t>(mpack_node_array_at(color_arr, 0).data->value.u);
-	renderer->hl_attribs[0].background = static_cast<uint32_t>(mpack_node_array_at(color_arr, 1).data->value.u);
-	renderer->hl_attribs[0].special = static_cast<uint32_t>(mpack_node_array_at(color_arr, 2).data->value.u);
-	renderer->hl_attribs[0].flags = 0;
+	for (size_t i = 1; i < default_colors_arr_length; ++i) {
+		mpack_node_t color_arr = mpack_node_array_at(default_colors, i);
 
-	CreateBrush(renderer, renderer->hl_attribs[0].foreground);
-	CreateBrush(renderer, renderer->hl_attribs[0].background);
-	CreateBrush(renderer, renderer->hl_attribs[0].special);
+		// Default colors occupy the first index of the highlight attribs array
+		renderer->hl_attribs[0].foreground = static_cast<uint32_t>(mpack_node_array_at(color_arr, 0).data->value.u);
+		renderer->hl_attribs[0].background = static_cast<uint32_t>(mpack_node_array_at(color_arr, 1).data->value.u);
+		renderer->hl_attribs[0].special = static_cast<uint32_t>(mpack_node_array_at(color_arr, 2).data->value.u);
+		renderer->hl_attribs[0].flags = 0;
+
+		CreateBrush(renderer, renderer->hl_attribs[0].foreground);
+		CreateBrush(renderer, renderer->hl_attribs[0].background);
+		CreateBrush(renderer, renderer->hl_attribs[0].special);
+	}
 }
 
 void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attribs) {
@@ -146,9 +150,9 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 		mpack_node_t attrib_map = mpack_node_array_at(mpack_node_array_at(highlight_attribs, i), 1);
 
 		const auto SetColor = [&](const char *name, uint32_t *color) {
-			mpack_node_t foreground = mpack_node_map_cstr_optional(attrib_map, name);
-			if (!mpack_node_is_missing(foreground)) {
-				*color = static_cast<uint32_t>(foreground.data->value.u);
+			mpack_node_t color_node = mpack_node_map_cstr_optional(attrib_map, name);
+			if (!mpack_node_is_missing(color_node)) {
+				*color = static_cast<uint32_t>(color_node.data->value.u);
 				CreateBrush(renderer, *color);
 			}
 			else {
@@ -162,7 +166,6 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 		const auto SetFlag = [&](const char *flag_name, HighlightAttributeFlags flag) {
 			mpack_node_t flag_node = mpack_node_map_cstr_optional(attrib_map, flag_name);
 			if (!mpack_node_is_missing(flag_node)) {
-
 				if (flag_node.data->value.b) {
 					renderer->hl_attribs[attrib_index].flags |= flag;
 				}
@@ -387,8 +390,8 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 		renderer->grid_cols = grid_cols;
 		renderer->grid_rows = grid_rows;
 
-		renderer->grid_chars = reinterpret_cast<wchar_t *>(calloc(grid_cols * grid_rows, sizeof(wchar_t)));
-		renderer->grid_hl_attrib_ids = reinterpret_cast<uint8_t *>(calloc(grid_cols * grid_rows, sizeof(uint8_t)));
+		renderer->grid_chars = static_cast<wchar_t *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(wchar_t)));
+		renderer->grid_hl_attrib_ids = static_cast<uint8_t *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(uint8_t)));
 
 		renderer->render_target->Clear(D2D1::ColorF(renderer->hl_attribs[0].background));
 	}
@@ -530,12 +533,33 @@ void DrawCursor(Renderer *renderer) {
 	DrawForegroundText(renderer, &cursor_char, 1, cursor_rect, &hl_attribs);
 }
 
+void DrawBorderRectangles(Renderer *renderer) {
+	float left_border = renderer->font_width * renderer->grid_cols;
+	float top_border = renderer->font_height * renderer->grid_rows;
+
+	D2D1_RECT_F vertical_rect {
+		.left = left_border,
+		.top = 0.0f,
+		.right = static_cast<float>(renderer->pixel_size.width),
+		.bottom = static_cast<float>(renderer->pixel_size.height)
+	};
+	D2D1_RECT_F horizontal_rect {
+		.left = 0.0f,
+		.top = top_border,
+		.right = static_cast<float>(renderer->pixel_size.width),
+		.bottom = static_cast<float>(renderer->pixel_size.height)
+	};
+
+	DrawBackgroundRect(renderer, vertical_rect, &renderer->hl_attribs[0]);
+	DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
+}
+
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 	renderer->render_target->BeginDraw();
 	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
 
+	bool force_redraw = false;
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
-
 	for (uint64_t i = 0; i < redraw_commands_length; ++i) {
 		mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
 		mpack_node_t redraw_command_name = mpack_node_array_at(redraw_command_arr, 0);
@@ -545,9 +569,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
-		}
-		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
-			UpdateDefaultColors(renderer, redraw_command_arr);
+			force_redraw = true;
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
@@ -566,12 +588,17 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
-			for (int i = 0; i < renderer->grid_rows; ++i) {
-				DrawGridLine(renderer, i);
-			}
+			force_redraw = true;
 		}
 	}
 
+	if (force_redraw) {
+		for (int i = 0; i < renderer->grid_rows; ++i) {
+			DrawGridLine(renderer, i);
+		}
+	}
+
+	DrawBorderRectangles(renderer);
 	DrawCursor(renderer);
 
 	renderer->render_target->EndDraw();
