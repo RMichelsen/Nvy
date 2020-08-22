@@ -69,9 +69,6 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 void RendererShutdown(Renderer *renderer);
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
-
 void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size_delta);
-
-CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
-
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
+CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
