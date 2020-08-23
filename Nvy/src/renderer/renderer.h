@@ -40,6 +40,8 @@ struct Cursor {
 	int grid_offset;
 };
 
+struct ColorDrawingEffect;
+struct GlyphRenderer;
 struct Renderer {
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
 	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
@@ -49,6 +51,7 @@ struct Renderer {
 	ID2D1HwndRenderTarget *render_target;
 	IDWriteFactory1 *write_factory;
 	IDWriteTextFormat *text_format;
+	GlyphRenderer *glyph_renderer;
 
 	float dpi_scale;
 	const wchar_t *font;
@@ -62,6 +65,8 @@ struct Renderer {
 	int grid_cols;
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
+
+	std::vector<ColorDrawingEffect *> color_drawing_effects;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size);

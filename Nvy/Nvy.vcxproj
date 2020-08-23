@@ -173,6 +173,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\renderer\glyph_renderer.cpp" />
     <ClCompile Include="src\renderer\renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -180,6 +181,7 @@
     <ClInclude Include="src\common\mpack_helper.h" />
     <ClInclude Include="src\nvim\nvim.h" />
     <ClInclude Include="src\pch.h" />
+    <ClInclude Include="src\renderer\glyph_renderer.h" />
     <ClInclude Include="src\renderer\renderer.h" />
   </ItemGroup>
   <ItemGroup>

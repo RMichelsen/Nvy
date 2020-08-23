@@ -2,6 +2,7 @@
 #include "renderer.h"
 
 #include "common/mpack_helper.h"
+#include "renderer/glyph_renderer.h"
 
 #define WIN_CHECK(x) { \
 HRESULT ret = x; \
@@ -35,9 +36,13 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
 
 	RendererUpdateFont(renderer, font, font_size);
+
+	renderer->glyph_renderer = new GlyphRenderer;
 }
 
 void RendererShutdown(Renderer *renderer) {
+	delete renderer->glyph_renderer;
+
 	renderer->d2d_factory->Release();
 	renderer->render_target->Release();
 	renderer->write_factory->Release();
@@ -193,41 +198,33 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 	}
 }
 
-ID2D1SolidColorBrush *CreateForegroundBrush(Renderer *renderer, HighlightAttributes *hl_attribs) {
-	ID2D1SolidColorBrush *brush;
+uint32_t CreateForegroundColor(Renderer *renderer, HighlightAttributes *hl_attribs) {
 	if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
-		uint32_t color = hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
-		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+		return hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
 	}
 	else {
-		uint32_t color = hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
-		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+		return hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
 	}
-	return brush;
 }
 
-ID2D1SolidColorBrush *CreateBackgroundBrush(Renderer *renderer, HighlightAttributes *hl_attribs) {
-	ID2D1SolidColorBrush *brush;
+uint32_t CreateBackgroundColor(Renderer *renderer, HighlightAttributes *hl_attribs) {
 	if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
-		uint32_t color = hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
-		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+		return hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
 	}
 	else {
-		uint32_t color = hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
-		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+		return hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
 	}
-	return brush;
 }
 
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
 	IDWriteTextLayout *text_layout, int start, int end) {
-	ID2D1SolidColorBrush *brush = CreateForegroundBrush(renderer, hl_attribs);
+	renderer->color_drawing_effects.push_back(new ColorDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
 
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
 	};
-	text_layout->SetDrawingEffect(brush, range);
+	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
 	if (hl_attribs->flags & HL_ATTRIB_ITALIC) {
 		text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
 	}
@@ -243,12 +240,12 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	if (hl_attribs->flags & HL_ATTRIB_UNDERCURL) {
 		text_layout->SetUnderline(true, range);
 	}
-
-	brush->Release();
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
-	ID2D1SolidColorBrush *brush = CreateBackgroundBrush(renderer, hl_attribs);
+	ID2D1SolidColorBrush *brush;
+	uint32_t color = CreateBackgroundColor(renderer, hl_attribs);
+	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
 
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 	renderer->render_target->FillRectangle(&rect, brush);
@@ -286,17 +283,13 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 		&text_layout
 	));
 	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, 1);
-	ID2D1SolidColorBrush *default_brush = CreateForegroundBrush(renderer, &renderer->hl_attribs[0]);
-
-	renderer->render_target->DrawTextLayout(
-		{ rect.left, rect.top },
-		text_layout,
-		default_brush,
-		D2D1_DRAW_TEXT_OPTIONS_CLIP
-	);
-
-	default_brush->Release();
+	
+	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
 	text_layout->Release();
+	for (ColorDrawingEffect *effect : renderer->color_drawing_effects) {
+		effect->Release();
+	}
+	renderer->color_drawing_effects.clear();
 }
 
 void DrawCursor(Renderer *renderer) {
@@ -316,7 +309,10 @@ void DrawCursor(Renderer *renderer) {
 	};
 	D2D1_RECT_F cursor_fg_rect = GetCursorForegroundRect(renderer, cursor_rect);
 	DrawBackgroundRect(renderer, cursor_fg_rect, &cursor_hl_attribs);
-	DrawSingleCharacter(renderer, cursor_fg_rect, character_under_cursor, &cursor_hl_attribs);
+
+	if (renderer->cursor.mode_info->shape == CursorShape::Block) {
+		DrawSingleCharacter(renderer, cursor_fg_rect, character_under_cursor, &cursor_hl_attribs);
+	}
 }
 
 void DrawGridLine(Renderer *renderer, int row) {
@@ -379,15 +375,12 @@ void DrawGridLine(Renderer *renderer, int row) {
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 
-	ID2D1SolidColorBrush *default_brush = CreateForegroundBrush(renderer, &renderer->hl_attribs[0]);
-	renderer->render_target->DrawTextLayout(
-		{ 0.0f, rect.top },
-		text_layout,
-		default_brush
-	);
-
-	default_brush->Release();
+	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
 	text_layout->Release();
+	for (ColorDrawingEffect *effect : renderer->color_drawing_effects) {
+		effect->Release();
+	}
+	renderer->color_drawing_effects.clear();
 }
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
