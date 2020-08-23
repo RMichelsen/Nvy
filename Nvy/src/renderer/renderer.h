@@ -41,7 +41,6 @@ struct Cursor {
 };
 
 struct Renderer {
-	std::unordered_map<uint32_t, ID2D1SolidColorBrush *> brushes;
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
 	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
 	Cursor cursor;

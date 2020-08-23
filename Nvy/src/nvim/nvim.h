@@ -1,11 +1,11 @@
 #pragma once
 
-enum NvimMethod : uint8_t {
+enum NvimRequest : uint8_t {
 	vim_get_api_info = 0,
 	nvim_input = 1,
 	nvim_input_mouse = 2
 };
-constexpr const char *NVIM_METHOD_NAMES[] {
+constexpr const char *NVIM_REQUEST_NAMES[] {
 	"nvim_get_api_info",
 	"nvim_input",
 	"nvim_input_mouse"
@@ -33,10 +33,11 @@ enum class MouseAction {
 	MouseWheelLeft,
 	MouseWheelRight
 };
+constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
 struct Nvim {
-	int64_t current_msg_id;
-	std::vector<NvimMethod> msg_id_to_method;
+	int64_t next_msg_id;
+	std::vector<NvimRequest> msg_id_to_method;
 
 	HWND hwnd;
 	HANDLE stdin_read;

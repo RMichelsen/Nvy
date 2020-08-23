@@ -14,9 +14,9 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
 	if (result.type == MPackMessageType::Response) {
-		assert(result.response.msg_id <= context->nvim->current_msg_id);
+		assert(result.response.msg_id <= context->nvim->next_msg_id);
 		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
-		case NvimMethod::vim_get_api_info: {
+		case NvimRequest::vim_get_api_info: {
 			mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
 			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
 			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;

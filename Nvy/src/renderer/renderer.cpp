@@ -38,9 +38,6 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 }
 
 void RendererShutdown(Renderer *renderer) {
-	for (auto& [_, brush] : renderer->brushes) {
-		brush->Release();
-	}
 	renderer->d2d_factory->Release();
 	renderer->render_target->Release();
 	renderer->write_factory->Release();
@@ -141,18 +138,6 @@ void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size
 	WIN_CHECK(renderer->text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height, baseline));
 }
 
-void CreateBrush(Renderer *renderer, uint32_t color) {
-	ID2D1SolidColorBrush *brush;
-	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(
-		D2D1::ColorF(color),
-		&brush
-	));
-
-	if (!renderer->brushes.contains(color)) {
-		renderer->brushes.insert({ color, brush });
-	}
-}
-
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
 	size_t default_colors_arr_length = mpack_node_array_length(default_colors);
 
@@ -164,10 +149,6 @@ void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
 		renderer->hl_attribs[0].background = static_cast<uint32_t>(mpack_node_array_at(color_arr, 1).data->value.u);
 		renderer->hl_attribs[0].special = static_cast<uint32_t>(mpack_node_array_at(color_arr, 2).data->value.u);
 		renderer->hl_attribs[0].flags = 0;
-
-		CreateBrush(renderer, renderer->hl_attribs[0].foreground);
-		CreateBrush(renderer, renderer->hl_attribs[0].background);
-		CreateBrush(renderer, renderer->hl_attribs[0].special);
 	}
 }
 
@@ -183,7 +164,6 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 			mpack_node_t color_node = mpack_node_map_cstr_optional(attrib_map, name);
 			if (!mpack_node_is_missing(color_node)) {
 				*color = static_cast<uint32_t>(color_node.data->value.u);
-				CreateBrush(renderer, *color);
 			}
 			else {
 				*color = DEFAULT_COLOR;
@@ -213,20 +193,35 @@ void UpdateHighlightAttributes(Renderer *renderer, mpack_node_t highlight_attrib
 	}
 }
 
+ID2D1SolidColorBrush *CreateForegroundBrush(Renderer *renderer, HighlightAttributes *hl_attribs) {
+	ID2D1SolidColorBrush *brush;
+	if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
+		uint32_t color = hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
+		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	}
+	else {
+		uint32_t color = hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
+		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	}
+	return brush;
+}
+
+ID2D1SolidColorBrush *CreateBackgroundBrush(Renderer *renderer, HighlightAttributes *hl_attribs) {
+	ID2D1SolidColorBrush *brush;
+	if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
+		uint32_t color = hl_attribs->foreground == DEFAULT_COLOR ? renderer->hl_attribs[0].foreground : hl_attribs->foreground;
+		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	}
+	else {
+		uint32_t color = hl_attribs->background == DEFAULT_COLOR ? renderer->hl_attribs[0].background : hl_attribs->background;
+		WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	}
+	return brush;
+}
+
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
 	IDWriteTextLayout *text_layout, int start, int end) {
-	ID2D1SolidColorBrush *brush = [=]() {
-		if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
-			return hl_attribs->background == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].background) :
-				renderer->brushes.at(hl_attribs->background);
-		}
-		else {
-			return hl_attribs->foreground == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].foreground) :
-				renderer->brushes.at(hl_attribs->foreground);
-		}
-	}();
+	ID2D1SolidColorBrush *brush = CreateForegroundBrush(renderer, hl_attribs);
 
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
@@ -248,48 +243,18 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	if (hl_attribs->flags & HL_ATTRIB_UNDERCURL) {
 		text_layout->SetUnderline(true, range);
 	}
+
+	brush->Release();
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
-	ID2D1SolidColorBrush *brush = [=]() {
-		if (hl_attribs->flags & HL_ATTRIB_REVERSE) {
-			return hl_attribs->foreground == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].foreground) :
-				renderer->brushes.at(hl_attribs->foreground);
-		}
-		else {
-			return hl_attribs->background == DEFAULT_COLOR ?
-				renderer->brushes.at(renderer->hl_attribs[0].background) :
-				renderer->brushes.at(hl_attribs->background);
-		}
-	}();
+	ID2D1SolidColorBrush *brush = CreateBackgroundBrush(renderer, hl_attribs);
 
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 	renderer->render_target->FillRectangle(&rect, brush);
 	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-}
 
-void DrawForegroundText(Renderer *renderer, wchar_t *text, int text_length,
-	D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
-	IDWriteTextLayout *text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
-		text,
-		text_length,
-		renderer->text_format,
-		rect.right - rect.left,
-		rect.bottom - rect.top,
-		&text_layout
-	));
-	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, text_length);
-
-	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
-	renderer->render_target->DrawTextLayout(
-		{ rect.left, rect.top },
-		text_layout,
-		default_brush
-	);
-
-	text_layout->Release();
+	brush->Release();
 }
 
 D2D1_RECT_F GetCursorForegroundRect(Renderer *renderer, D2D1_RECT_F cursor_bg_rect) {
@@ -321,7 +286,7 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 		&text_layout
 	));
 	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, 1);
-	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
+	ID2D1SolidColorBrush *default_brush = CreateForegroundBrush(renderer, &renderer->hl_attribs[0]);
 
 	renderer->render_target->DrawTextLayout(
 		{ rect.left, rect.top },
@@ -329,6 +294,8 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 		default_brush,
 		D2D1_DRAW_TEXT_OPTIONS_CLIP
 	);
+
+	default_brush->Release();
 	text_layout->Release();
 }
 
@@ -412,13 +379,14 @@ void DrawGridLine(Renderer *renderer, int row) {
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 
-	ID2D1SolidColorBrush *default_brush = renderer->brushes.at(renderer->hl_attribs[0].foreground);
+	ID2D1SolidColorBrush *default_brush = CreateForegroundBrush(renderer, &renderer->hl_attribs[0]);
 	renderer->render_target->DrawTextLayout(
 		{ 0.0f, rect.top },
 		text_layout,
 		default_brush
 	);
 
+	default_brush->Release();
 	text_layout->Release();
 }
 
