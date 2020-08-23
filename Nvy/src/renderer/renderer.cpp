@@ -16,7 +16,7 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 
 	D2D1_RENDER_TARGET_PROPERTIES target_props = D2D1_RENDER_TARGET_PROPERTIES {
 		.type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
-		.pixelFormat = D2D1::PixelFormat(),
+		.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
 		.dpiX = 96.0f,
 		.dpiY = 96.0f,
 	};
@@ -34,16 +34,26 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 	};
 
 	WIN_CHECK(renderer->d2d_factory->CreateHwndRenderTarget(target_props, hwnd_props, &renderer->render_target));
+	renderer->render_target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
 
-	RendererUpdateFont(renderer, font, font_size);
-
 	renderer->glyph_renderer = new GlyphRenderer;
+
+	RendererUpdateFont(renderer, font, font_size);
+}
+
+void ReleaseAllDrawingEffects(Renderer *renderer) {
+	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
+		effect->Release();
+	}
+	renderer->color_drawing_effects.clear();
 }
 
 void RendererShutdown(Renderer *renderer) {
 	delete renderer->glyph_renderer;
 
+	ReleaseAllDrawingEffects(renderer);
 	renderer->d2d_factory->Release();
 	renderer->render_target->Release();
 	renderer->write_factory->Release();
@@ -221,10 +231,6 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	IDWriteTextLayout *text_layout, int start, int end) {
 	renderer->color_drawing_effects.push_back(new GlyphDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
 
-	ID2D1SolidColorBrush *brush;
-	uint32_t color = CreateForegroundColor(renderer, hl_attribs);
-	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
-
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
@@ -246,8 +252,6 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 		renderer->color_drawing_effects.back()->undercurl = true;
 	}
 	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
-
-	brush->Release();
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
@@ -293,21 +297,23 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, 1);
 	
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
-
-	//ID2D1SolidColorBrush *brush;
-	//uint32_t color = CreateForegroundColor(renderer, &renderer->hl_attribs[0]);
-	//WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
-	//renderer->render_target->DrawTextLayout(
-	//	{ rect.left, rect.top },
-	//	text_layout,
-	//	brush
-	//);
-
 	text_layout->Release();
-	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
-		effect->Release();
-	}
-	renderer->color_drawing_effects.clear();
+	ReleaseAllDrawingEffects(renderer);
+}
+
+void EraseCursor(Renderer *renderer) {
+	wchar_t character_under_cursor = renderer->grid_chars[renderer->cursor.grid_offset];
+	int double_width_char_factor = GetCharacterWidth(renderer, character_under_cursor) > renderer->font_width ? 2 : 1;
+	D2D1_RECT_F cursor_rect {
+		.left = renderer->cursor.col * renderer->font_width,
+		.top = renderer->cursor.row * renderer->font_height,
+		.right = renderer->cursor.col * renderer->font_width + renderer->font_width * double_width_char_factor,
+		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
+	};
+
+	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[renderer->cursor.grid_offset]];
+	DrawBackgroundRect(renderer, cursor_rect, hl_attribs);
+	DrawSingleCharacter(renderer, cursor_rect, character_under_cursor, hl_attribs);
 }
 
 void DrawCursor(Renderer *renderer) {
@@ -394,20 +400,8 @@ void DrawGridLine(Renderer *renderer, int row) {
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
-	//ID2D1SolidColorBrush *brush;
-	//uint32_t color = CreateForegroundColor(renderer, &renderer->hl_attribs[0]);
-	//WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
-	//renderer->render_target->DrawTextLayout(
-	//	{ 0, rect.top },
-	//	text_layout,
-	//	brush
-	//);
-
 	text_layout->Release();
-	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
-		effect->Release();
-	}
-	renderer->color_drawing_effects.clear();
+	ReleaseAllDrawingEffects(renderer);
 }
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
@@ -542,7 +536,6 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 		}
 	}
 }
-#include <chrono>
 
 void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
@@ -557,7 +550,6 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	// Currently nvim does not support horizontal scrolling, 
 	// the parameter is reserved for later use
 	assert(cols == 0);
-
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
@@ -632,9 +624,8 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			DrawGridLines(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_cursor_goto")) {
-			DrawGridLine(renderer, renderer->cursor.row);
+			EraseCursor(renderer);
 			UpdateCursorPos(renderer, redraw_command_arr);
-			DrawGridLine(renderer, renderer->cursor.row);
 		}
 		else if (MPackMatchString(redraw_command_name, "mode_info_set")) {
 			UpdateCursorModeInfos(renderer, redraw_command_arr);
@@ -648,8 +639,6 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 	}
 
-	auto t1 = std::chrono::high_resolution_clock::now();
-
 	if (force_redraw) {
 		for (int row = 0; row < renderer->grid_rows; ++row) {
 			DrawGridLine(renderer, row);
@@ -658,12 +647,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 	DrawCursor(renderer);
 	DrawBorderRectangles(renderer);
 
-
 	renderer->render_target->EndDraw();
-
-	auto t2 = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-	printf("FR: %i, %llu\n", force_redraw, duration);
 }
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {

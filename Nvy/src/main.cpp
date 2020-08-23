@@ -172,7 +172,7 @@ void OpenConsole() {
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	OpenConsole();
+	//OpenConsole();
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
@@ -208,7 +208,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Consolas", 25.0f);
+	RendererInitialize(&renderer, hwnd, L"Fira Code", 25.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);
