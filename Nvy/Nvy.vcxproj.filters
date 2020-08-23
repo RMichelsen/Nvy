@@ -24,13 +24,13 @@
     <ClCompile Include="src\nvim\nvim.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dependencies\mpack\include\mpack\mpack.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\renderer\renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\glyph_renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\mpack\include\mpack\mpack.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -39,9 +39,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\nvim\nvim.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dependencies\mpack\include\mpack\mpack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\renderer.h">
@@ -53,8 +50,11 @@
     <ClInclude Include="src\renderer\glyph_renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="third_party\mpack\include\mpack\mpack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="dependencies\mpack\LICENSE.txt" />
+    <Text Include="third_party\mpack\LICENSE.txt" />
   </ItemGroup>
 </Project>

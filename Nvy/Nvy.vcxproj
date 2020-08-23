@@ -123,7 +123,7 @@
       <PreprocessorDefinitions>MPACK_EXTENSIONS;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)dependencies\mpack\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\mpack\include</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <DisableSpecificWarnings>26812;28251</DisableSpecificWarnings>
@@ -146,7 +146,7 @@
       <PreprocessorDefinitions>MPACK_EXTENSIONS;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)dependencies\mpack\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\mpack\include</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <DisableSpecificWarnings>26812;28251</DisableSpecificWarnings>
@@ -163,10 +163,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dependencies\mpack\include\mpack\mpack.c">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\nvim\nvim.cpp" />
     <ClCompile Include="src\pch.cpp">
@@ -175,17 +171,21 @@
     </ClCompile>
     <ClCompile Include="src\renderer\glyph_renderer.cpp" />
     <ClCompile Include="src\renderer\renderer.cpp" />
+    <ClCompile Include="third_party\mpack\include\mpack\mpack.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="dependencies\mpack\include\mpack\mpack.h" />
     <ClInclude Include="src\common\mpack_helper.h" />
     <ClInclude Include="src\nvim\nvim.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\renderer\glyph_renderer.h" />
     <ClInclude Include="src\renderer\renderer.h" />
+    <ClInclude Include="third_party\mpack\include\mpack\mpack.h" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="dependencies\mpack\LICENSE.txt" />
+    <Text Include="third_party\mpack\LICENSE.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
