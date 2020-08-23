@@ -143,12 +143,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Release, cursor_pos.row, cursor_pos.col);
 	} return 0;
 	case WM_MOUSEWHEEL: {
-		short wheel_delta = GET_WHEEL_DELTA_WPARAM(wparam);
-		if (wheel_delta > 0) {
-			NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelUp, 0, 0);
+		short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
+		short scroll_amount = wheel_distance / WHEEL_DELTA;
+		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
+		if (scroll_amount > 0) {
+			for (int i = 0; i < scroll_amount; ++i) {
+				NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelUp, cursor_pos.row, cursor_pos.col);
+			}
 		}
 		else {
-			NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelDown, 0, 0);
+			for (int i = scroll_amount; i < 0; ++i) {
+				NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelDown, cursor_pos.row, cursor_pos.col);
+			}
 		}
 	} return 0;
 	}
@@ -202,7 +208,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Fira Code", 20.0f);
+	RendererInitialize(&renderer, hwnd, L"Consolas", 25.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);

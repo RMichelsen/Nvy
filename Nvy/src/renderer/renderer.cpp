@@ -29,7 +29,8 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 	};
 	D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
 		.hwnd = hwnd,
-		.pixelSize = renderer->pixel_size
+		.pixelSize = renderer->pixel_size,
+		.presentOptions = D2D1_PRESENT_OPTIONS_IMMEDIATELY
 	};
 
 	WIN_CHECK(renderer->d2d_factory->CreateHwndRenderTarget(target_props, hwnd_props, &renderer->render_target));
@@ -220,6 +221,10 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	IDWriteTextLayout *text_layout, int start, int end) {
 	renderer->color_drawing_effects.push_back(new GlyphDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
 
+	ID2D1SolidColorBrush *brush;
+	uint32_t color = CreateForegroundColor(renderer, hl_attribs);
+	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
@@ -241,6 +246,8 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 		renderer->color_drawing_effects.back()->undercurl = true;
 	}
 	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
+
+	brush->Release();
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
@@ -286,6 +293,16 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, 1);
 	
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
+
+	//ID2D1SolidColorBrush *brush;
+	//uint32_t color = CreateForegroundColor(renderer, &renderer->hl_attribs[0]);
+	//WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	//renderer->render_target->DrawTextLayout(
+	//	{ rect.left, rect.top },
+	//	text_layout,
+	//	brush
+	//);
+
 	text_layout->Release();
 	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
 		effect->Release();
@@ -377,6 +394,15 @@ void DrawGridLine(Renderer *renderer, int row) {
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
+	//ID2D1SolidColorBrush *brush;
+	//uint32_t color = CreateForegroundColor(renderer, &renderer->hl_attribs[0]);
+	//WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	//renderer->render_target->DrawTextLayout(
+	//	{ 0, rect.top },
+	//	text_layout,
+	//	brush
+	//);
+
 	text_layout->Release();
 	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
 		effect->Release();
@@ -516,6 +542,7 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 		}
 	}
 }
+#include <chrono>
 
 void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
@@ -530,6 +557,7 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	// Currently nvim does not support horizontal scrolling, 
 	// the parameter is reserved for later use
 	assert(cols == 0);
+
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
@@ -620,16 +648,22 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 	}
 
+	auto t1 = std::chrono::high_resolution_clock::now();
+
 	if (force_redraw) {
 		for (int row = 0; row < renderer->grid_rows; ++row) {
 			DrawGridLine(renderer, row);
 		}
 	}
-
 	DrawCursor(renderer);
-
 	DrawBorderRectangles(renderer);
+
+
 	renderer->render_target->EndDraw();
+
+	auto t2 = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+	printf("FR: %i, %llu\n", force_redraw, duration);
 }
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {

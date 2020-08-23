@@ -387,9 +387,9 @@ void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int 
 		modifers += "M-";
 	}
 
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	char data[256];
 	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	mpack_writer_init(&writer, data, 256);
 	MPackStartRequest(RegisterRequest(nvim, nvim_input_mouse), NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
 
 	mpack_start_array(&writer, 6);
