@@ -3,8 +3,8 @@
 
 #include "renderer/renderer.h"
 
-HRESULT ColorDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) {
-	if (__uuidof(ColorDrawingEffect) == riid) {
+HRESULT GlyphDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) {
+	if (__uuidof(GlyphDrawingEffect) == riid) {
 		*ppv_object = this;
 	}
 	else if (__uuidof(IUnknown) == riid) {
@@ -71,9 +71,9 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 	uint32_t color;
 	if (client_drawing_effect)
 	{
-		ColorDrawingEffect *color_drawing_effect;
-		client_drawing_effect->QueryInterface(__uuidof(ColorDrawingEffect), reinterpret_cast<void **>(&color_drawing_effect));
-		color = color_drawing_effect->color;
+		GlyphDrawingEffect *drawing_effect;
+		client_drawing_effect->QueryInterface(__uuidof(GlyphDrawingEffect), reinterpret_cast<void **>(&drawing_effect));
+		color = drawing_effect->color;
 	}
 	else {
 		color = renderer->hl_attribs[0].foreground;
@@ -116,6 +116,107 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
 
+	int row = static_cast<int>(baseline_origin_y / renderer->font_height);
+	int col = static_cast<int>(baseline_origin_x / renderer->font_width);
+	int index = row * renderer->grid_cols + col;
+	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[index]];
+	uint32_t color = hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
+	ID2D1SolidColorBrush *brush;
+	hr = renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
+
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+	if (client_drawing_effect) {
+		GlyphDrawingEffect *drawing_effect;
+		client_drawing_effect->QueryInterface(__uuidof(GlyphDrawingEffect), reinterpret_cast<void **>(&drawing_effect));
+
+		if (drawing_effect->undercurl) {
+			ID2D1PathGeometry *path_geometry = nullptr;
+			hr = renderer->d2d_factory->CreatePathGeometry(&path_geometry);
+
+			ID2D1GeometrySink *geometry_sink = nullptr;
+			if (SUCCEEDED(hr)) {
+				hr = path_geometry->Open(&geometry_sink);
+			}
+
+			if (SUCCEEDED(hr)) {
+				float wiggle_height = underline->offset * 2.0f;
+				int wiggle_count = static_cast<int>(underline->width / renderer->font_width) * 2;
+				float wiggle_step = underline->width / wiggle_count;
+
+				geometry_sink->SetFillMode(D2D1_FILL_MODE_WINDING);
+				geometry_sink->BeginFigure(
+					D2D1_POINT_2F { .x = 0, .y = underline->offset },
+					D2D1_FIGURE_BEGIN_FILLED
+				);
+
+				for (int i = 0; i < wiggle_count; ++i) {
+					float wiggle_factor = i % 2 == 0 ? wiggle_height : -wiggle_height;
+					geometry_sink->AddBezier(
+						D2D1::BezierSegment(
+							D2D1_POINT_2F { .x = wiggle_step * i, .y = underline->offset },
+							D2D1_POINT_2F { .x = wiggle_step * i + (wiggle_step / 2.0f), .y = underline->offset + wiggle_factor },
+							D2D1_POINT_2F { .x = wiggle_step * i + wiggle_step, .y = underline->offset }
+						)
+					);
+				}
+				geometry_sink->AddLine(D2D1_POINT_2F { .x = underline->width, .y = underline->offset + underline->thickness });
+
+				for (int i = wiggle_count; i > 0; --i) {
+					float wiggle_factor = i % 2 != 0 ? wiggle_height : -wiggle_height;
+					geometry_sink->AddBezier(
+						D2D1::BezierSegment(
+							D2D1_POINT_2F { .x = wiggle_step * i, .y = underline->offset + underline->thickness },
+							D2D1_POINT_2F { .x = wiggle_step * i - (wiggle_step / 2.0f), .y = underline->offset + underline->thickness + wiggle_factor },
+							D2D1_POINT_2F { .x = wiggle_step * i - wiggle_step, .y = underline->offset + underline->thickness }
+						)
+					);
+				}
+				geometry_sink->AddLine(D2D1_POINT_2F { .x = 0, .y = underline->offset });
+
+				geometry_sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+			}
+
+			if (SUCCEEDED(hr)) {
+				hr = geometry_sink->Close();
+			}
+
+			D2D1::Matrix3x2F transform = D2D1::Matrix3x2F(
+				1.0f, 0.0f,
+				0.0f, 1.0f,
+				baseline_origin_x, baseline_origin_y
+			);
+
+			ID2D1TransformedGeometry *transformed_geometry = nullptr;
+			if (SUCCEEDED(hr)) {
+				hr = renderer->d2d_factory->CreateTransformedGeometry(
+					path_geometry,
+					&transform,
+					&transformed_geometry
+				);
+			}
+
+			if (SUCCEEDED(hr)) {
+				renderer->render_target->DrawGeometry(
+					transformed_geometry,
+					brush
+				);
+				renderer->render_target->FillGeometry(
+					transformed_geometry,
+					brush
+				);
+			}
+			brush->Release();
+
+			path_geometry->Release();
+			geometry_sink->Release();
+			transformed_geometry->Release();
+			return hr;
+		}
+	}
+
 	D2D1_RECT_F rect = D2D1_RECT_F {
 		.left = 0,
 		.top = underline->offset,
@@ -143,15 +244,6 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 			&transformed_geometry
 		);
 	}
-
-	int row = static_cast<int>(baseline_origin_y / renderer->font_height);
-	int col = static_cast<int>(baseline_origin_x / renderer->font_width);
-	int index = row * renderer->grid_cols + col + 1;
-	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[index]];
-
-	uint32_t color = hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
-	ID2D1SolidColorBrush *brush;
-	hr = renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
 
 	renderer->render_target->DrawGeometry(
 		transformed_geometry,

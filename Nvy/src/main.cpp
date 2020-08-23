@@ -202,7 +202,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Fira Code", 30.0f);
+	RendererInitialize(&renderer, hwnd, L"Fira Code", 20.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);

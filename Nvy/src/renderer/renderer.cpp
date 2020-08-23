@@ -218,13 +218,12 @@ uint32_t CreateBackgroundColor(Renderer *renderer, HighlightAttributes *hl_attri
 
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
 	IDWriteTextLayout *text_layout, int start, int end) {
-	renderer->color_drawing_effects.push_back(new ColorDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
+	renderer->color_drawing_effects.push_back(new GlyphDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
 
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
 	};
-	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
 	if (hl_attribs->flags & HL_ATTRIB_ITALIC) {
 		text_layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
 	}
@@ -239,7 +238,9 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	}
 	if (hl_attribs->flags & HL_ATTRIB_UNDERCURL) {
 		text_layout->SetUnderline(true, range);
+		renderer->color_drawing_effects.back()->undercurl = true;
 	}
+	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
@@ -286,7 +287,7 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 	
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
 	text_layout->Release();
-	for (ColorDrawingEffect *effect : renderer->color_drawing_effects) {
+	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
 		effect->Release();
 	}
 	renderer->color_drawing_effects.clear();
@@ -377,7 +378,7 @@ void DrawGridLine(Renderer *renderer, int row) {
 
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
 	text_layout->Release();
-	for (ColorDrawingEffect *effect : renderer->color_drawing_effects) {
+	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
 		effect->Release();
 	}
 	renderer->color_drawing_effects.clear();

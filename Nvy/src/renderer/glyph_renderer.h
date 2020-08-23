@@ -1,7 +1,7 @@
 #pragma once
 
-struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") ColorDrawingEffect : public IUnknown {
-	ColorDrawingEffect(uint32_t color) : ref_count(0), color(color) {}
+struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect : public IUnknown {
+	GlyphDrawingEffect(uint32_t color) : ref_count(0), color(color), undercurl(false) {}
 
 	inline ULONG AddRef() override {
 		return InterlockedIncrement(&ref_count);
@@ -20,6 +20,7 @@ struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") ColorDrawingEffect 
 
 	ULONG ref_count;
 	uint32_t color;
+	bool undercurl;
 };
 
 struct Renderer;

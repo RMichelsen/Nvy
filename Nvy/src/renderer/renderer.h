@@ -40,7 +40,7 @@ struct Cursor {
 	int grid_offset;
 };
 
-struct ColorDrawingEffect;
+struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
@@ -66,7 +66,7 @@ struct Renderer {
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
 
-	std::vector<ColorDrawingEffect *> color_drawing_effects;
+	std::vector<GlyphDrawingEffect *> color_drawing_effects;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size);
