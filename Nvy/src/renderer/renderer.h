@@ -54,6 +54,7 @@ struct Renderer {
 	ID2D1HwndRenderTarget *render_target;
 	IDWriteFactory1 *write_factory;
 	IDWriteTextFormat *text_format;
+	ID2D1Bitmap *scroll_region_bitmap;
 	GlyphRenderer *glyph_renderer;
 
 	float dpi_scale;
@@ -62,6 +63,7 @@ struct Renderer {
 	float font_size;
 	float font_height;
 	float font_width;
+	float line_spacing;
 
 	D2D1_SIZE_U pixel_size;
 	int grid_rows;

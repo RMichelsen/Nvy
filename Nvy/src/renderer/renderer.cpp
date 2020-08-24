@@ -36,6 +36,11 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float f
 
 	WIN_CHECK(renderer->d2d_factory->CreateHwndRenderTarget(target_props, hwnd_props, &renderer->render_target));
 	renderer->render_target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+	renderer->render_target->CreateBitmap(
+		renderer->pixel_size,
+		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE)),
+		&renderer->scroll_region_bitmap
+	);
 
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
 
@@ -60,6 +65,12 @@ void RendererResize(Renderer *renderer, uint32_t width, uint32_t height) {
 	renderer->pixel_size.width = width;
 	renderer->pixel_size.height = height;
 	WIN_CHECK(renderer->render_target->Resize(&renderer->pixel_size));
+	renderer->scroll_region_bitmap->Release();
+	renderer->render_target->CreateBitmap(
+		renderer->pixel_size,
+		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE)),
+		&renderer->scroll_region_bitmap
+	);
 }
 
 float GetCharacterWidth(Renderer *renderer, wchar_t wchar) {
@@ -111,7 +122,9 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 
 	float baseline = (static_cast<float>(renderer->font_metrics.ascent) * renderer->font_size) /
 		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
-	WIN_CHECK(renderer->text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height, baseline));
+
+	renderer->line_spacing = ceilf(renderer->font_height);
+	WIN_CHECK(renderer->text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->line_spacing, baseline));
 }
 
 void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) {
@@ -329,9 +342,9 @@ void EraseCursor(Renderer *renderer) {
 
 	D2D1_RECT_F cursor_rect {
 		.left = renderer->cursor.col * renderer->font_width,
-		.top = renderer->cursor.row * renderer->font_height,
+		.top = renderer->cursor.row * renderer->line_spacing,
 		.right = renderer->cursor.col * renderer->font_width + renderer->font_width * double_width_char_factor,
-		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
+		.bottom = (renderer->cursor.row * renderer->line_spacing) + renderer->line_spacing
 	};
 
 	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[cursor_grid_offset]];
@@ -356,9 +369,9 @@ void DrawCursor(Renderer *renderer) {
 
 	D2D1_RECT_F cursor_rect {
 		.left = renderer->cursor.col * renderer->font_width,
-		.top = renderer->cursor.row * renderer->font_height,
+		.top = renderer->cursor.row * renderer->line_spacing,
 		.right = renderer->cursor.col * renderer->font_width + renderer->font_width * double_width_char_factor,
-		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
+		.bottom = (renderer->cursor.row * renderer->line_spacing) + renderer->line_spacing
 	};
 	D2D1_RECT_F cursor_fg_rect = GetCursorForegroundRect(renderer, cursor_rect);
 	DrawBackgroundRect(renderer, cursor_fg_rect, &cursor_hl_attribs);
@@ -373,9 +386,9 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 
 	D2D1_RECT_F rect {
 		.left = start * renderer->font_width,
-		.top = row * renderer->font_height,
+		.top = row * renderer->line_spacing,
 		.right = end * renderer->font_width,
-		.bottom = (row * renderer->font_height) + renderer->font_height
+		.bottom = (row * renderer->line_spacing) + renderer->line_spacing
 	};
 	if (renderer->grid_chars[base] == L'\0') {
 		DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
@@ -413,9 +426,9 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
 			D2D1_RECT_F bg_rect {
 				.left = (start + col_offset) * renderer->font_width,
-				.top = row * renderer->font_height,
+				.top = row * renderer->line_spacing,
 				.right = (start + col_offset) * renderer->font_width + renderer->font_width * (i - col_offset),
-				.bottom = (row * renderer->font_height) + renderer->font_height
+				.bottom = (row * renderer->line_spacing) + renderer->line_spacing
 			};
 			DrawBackgroundRect(renderer, bg_rect, &renderer->hl_attribs[hl_attrib_id]);
 			ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, i);
@@ -480,17 +493,15 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				repeat = MPackIntFromArray(cells, 2);
 			}
 
-			// TODO: Redundant'ish call
-			int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
-			int wstrlen_with_repetitions = wstrlen * repeat;
-
 			int offset = row * renderer->grid_cols + col_offset;
-			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
+			int wstrlen = 0;
 			for (int k = 0; k < repeat; ++k) {
 				int idx = offset + (k * wstrlen);
-				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_cols * renderer->grid_rows) - idx);
+				wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_cols * renderer->grid_rows) - idx);
 			}
 
+			int wstrlen_with_repetitions = wstrlen * repeat;
+			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
 			col_offset += wstrlen_with_repetitions;
 		}
 
@@ -570,7 +581,7 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
 
 	int64_t top = mpack_node_array_at(scroll_region_params, 1).data->value.i;
-	int64_t bot = mpack_node_array_at(scroll_region_params, 2).data->value.i;
+	int64_t bottom = mpack_node_array_at(scroll_region_params, 2).data->value.i;
 	int64_t left = mpack_node_array_at(scroll_region_params, 3).data->value.i;
 	int64_t right = mpack_node_array_at(scroll_region_params, 4).data->value.i;
 	int64_t rows = mpack_node_array_at(scroll_region_params, 5).data->value.i;
@@ -582,14 +593,14 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
-	int64_t start_row = rows > 0 ? top : bot - 1;
-	int64_t end_row = rows > 0 ? bot - 1 : top;
+	int64_t start_row = rows > 0 ? top : bottom - 1;
+	int64_t end_row = rows > 0 ? bottom - 1 : top;
 	int64_t increment = rows > 0 ? 1 : -1;
 
 	for (int64_t i = start_row; rows > 0 ? i <= end_row : i >= end_row; i += increment) {
 		// Clip anything outside the scroll region
 		int64_t target_row = i - rows;
-		if (target_row < top || target_row >= bot) {
+		if (target_row < top || target_row >= bottom) {
 			continue;
 		}
 
@@ -605,11 +616,56 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 			right - left
 		);
 	}
+
+	D2D1_RECT_U scroll_region_origin {
+		.left = static_cast<uint32_t>(roundf(left * renderer->font_width)),
+		.top = static_cast<uint32_t>(top * renderer->line_spacing),
+		.right = static_cast<uint32_t>(roundf(right * renderer->font_width)),
+		.bottom = static_cast<uint32_t>(bottom * renderer->line_spacing)
+	};
+	D2D1_RECT_F scroll_region_target {
+		.left = roundf(left * renderer->font_width),
+		.top = (top - rows) * renderer->line_spacing,
+		.right = roundf(right * renderer->font_width),
+		.bottom = (bottom - rows) * renderer->line_spacing
+	};
+
+	constexpr D2D1_POINT_2U dest_point { .x = 0, .y = 0 };
+	renderer->scroll_region_bitmap->CopyFromRenderTarget(
+		&dest_point,
+		renderer->render_target,
+		&scroll_region_origin
+	);
+
+	renderer->render_target->PushAxisAlignedClip(
+		D2D1_RECT_F {
+			.left = roundf(left * renderer->font_width),
+			.top = top * renderer->line_spacing,
+			.right = roundf(right * renderer->font_width),
+			.bottom = bottom * renderer->line_spacing
+		},
+		D2D1_ANTIALIAS_MODE_ALIASED
+	);
+
+	D2D1_RECT_F bitmap_copy_rect {
+		.left = 0.0f,
+		.top = 0.0f,
+		.right = scroll_region_target.right - scroll_region_target.left,
+		.bottom = scroll_region_target.bottom - scroll_region_target.top
+	};
+	renderer->render_target->DrawBitmap(
+		renderer->scroll_region_bitmap,
+		&scroll_region_target,
+		1.0f,
+		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+		&bitmap_copy_rect
+	);
+	renderer->render_target->PopAxisAlignedClip();
 }
 
 void DrawBorderRectangles(Renderer *renderer) {
 	float left_border = renderer->font_width * renderer->grid_cols;
-	float top_border = renderer->font_height * renderer->grid_rows;
+	float top_border = renderer->line_spacing * renderer->grid_rows;
 
 	D2D1_RECT_F vertical_rect {
 		.left = left_border,
@@ -667,7 +723,7 @@ void ClearGrid(Renderer *renderer) {
 		.left = 0.0f,
 		.top = 0.0f,
 		.right = renderer->grid_cols * renderer->font_width,
-		.bottom = renderer->grid_rows * renderer->font_height
+		.bottom = renderer->grid_rows * renderer->line_spacing
 	};
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
 }
@@ -718,7 +774,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
-			force_redraw = true;
+			//force_redraw = true;
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
 			if (force_redraw) {
@@ -737,7 +793,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {
 	return CursorPos {
-		.row = static_cast<int>(mouse_pos.y / renderer->font_height),
+		.row = static_cast<int>(mouse_pos.y / renderer->line_spacing),
 		.col = static_cast<int>(mouse_pos.x / renderer->font_width)
 	};
 }
