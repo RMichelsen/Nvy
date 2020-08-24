@@ -1,8 +1,5 @@
 #pragma once
 
-constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFF;
-constexpr int MAX_CURSOR_MODE_INFOS = 64;
-constexpr int MAX_FONT_LENGTH = 128;
 constexpr uint32_t DEFAULT_COLOR = 0x46464646;
 enum HighlightAttributeFlags : uint16_t {
 	HL_ATTRIB_REVERSE			= 1 << 0,
@@ -25,10 +22,16 @@ enum class CursorShape {
 	Vertical,
 	Horizontal
 };
-struct CursorPos {
+
+struct GridPoint {
 	int row;
 	int col;
 };
+struct GridSize {
+	int rows;
+	int cols;
+};
+
 struct CursorModeInfo {
 	CursorShape shape;
 	float cell_percentage;
@@ -45,6 +48,9 @@ struct CellProperty {
 	bool is_wide_char;
 };
 
+constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFF;
+constexpr int MAX_CURSOR_MODE_INFOS = 64;
+constexpr int MAX_FONT_LENGTH = 128;
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
@@ -52,16 +58,28 @@ struct Renderer {
 	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
 	Cursor cursor;
 
-	ID2D1Factory *d2d_factory;
-	ID2D1HwndRenderTarget *render_target;
-	IDWriteFactory1 *write_factory;
-	IDWriteTextFormat *text_format;
-	ID2D1Bitmap *scroll_region_bitmap;
 	GlyphRenderer *glyph_renderer;
 
-	float dpi_scale;
+	D3D_FEATURE_LEVEL d3d_feature_level;
+	ID3D11Device2 *d3d_device;
+	ID3D11DeviceContext2 *d3d_context;
+	IDXGISwapChain1 *dxgi_swapchain;
+	ID2D1Factory5 *d2d_factory;
+	ID2D1Device4 *d2d_device;
+	ID2D1DeviceContext4 *d2d_context;
+	ID2D1Bitmap1 *d2d_target_bitmap;
+
+	IDWriteFactory4 *dwrite_factory;
+	IDWriteTextFormat *dwrite_text_format;
+
+	Vec<RECT> dirty_rects;
+	RECT scrolled_rect;
+	POINT scroll_offset;
+	bool scrolled;
+
 	wchar_t font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
+	float dpi_scale;
 	float font_size;
 	float font_height;
 	float font_width;
@@ -75,6 +93,7 @@ struct Renderer {
 
 	HWND hwnd;
 	bool draw_active;
+	bool initial_draw;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size);
@@ -83,4 +102,6 @@ void RendererShutdown(Renderer *renderer);
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
 void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
-CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
+
+GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height);
+GridPoint RendererCursorToGridPoint(Renderer *renderer, POINTS cursor_pos);

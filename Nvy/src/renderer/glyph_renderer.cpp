@@ -27,7 +27,7 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 	
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
-
+	
 	uint32_t color;
 	if (client_drawing_effect)
 	{
@@ -40,10 +40,10 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 		color = renderer->hl_attribs[0].foreground;
 	}
 	ID2D1SolidColorBrush *brush;
-	hr = renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
+	hr = renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
 
 	if (SUCCEEDED(hr)) {
-		renderer->render_target->DrawGlyphRun(
+		renderer->d2d_context->DrawGlyphRun(
 			D2D1_POINT_2F { .x = baseline_origin_x, .y = baseline_origin_y },
 			glyph_run,
 			brush,
@@ -77,7 +77,7 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_cell_properties[index].hl_attrib_id];
 	uint32_t color = hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
 	ID2D1SolidColorBrush *brush;
-	hr = renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
+	hr = renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
 
 	D2D1::Matrix3x2F transform = D2D1::Matrix3x2F(
 		1.0f, 0.0f,
@@ -155,11 +155,11 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 			}
 
 			if (SUCCEEDED(hr)) {
-				renderer->render_target->DrawGeometry(
+				renderer->d2d_context->DrawGeometry(
 					transformed_geometry,
 					brush
 				);
-				renderer->render_target->FillGeometry(
+				renderer->d2d_context->FillGeometry(
 					transformed_geometry,
 					brush
 				);
@@ -195,11 +195,11 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 		);
 	}
 
-	renderer->render_target->DrawGeometry(
+	renderer->d2d_context->DrawGeometry(
 		transformed_geometry,
 		brush
 	);
-	renderer->render_target->FillGeometry(
+	renderer->d2d_context->FillGeometry(
 		transformed_geometry,
 		brush
 	);
@@ -217,7 +217,7 @@ HRESULT GlyphRenderer::IsPixelSnappingDisabled(void *client_drawing_context, BOO
 
 HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context, DWRITE_MATRIX *transform) {
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
-	renderer->render_target->GetTransform(reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
+	renderer->d2d_context->GetTransform(reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
 	return S_OK;
 }
 

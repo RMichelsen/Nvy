@@ -200,18 +200,10 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
 
-	std::string input_string = "<";
-
-	if (shift_down) {
-		input_string += "S-";
-	}
-	if (ctrl_down) {
-		input_string += "C-";
-	}
-	if (alt_down) {
-		input_string += "M-";
-	}
-
+	constexpr int MAX_INPUT_STRING_SIZE = 64;
+	char input_string[MAX_INPUT_STRING_SIZE];
+	char single_key[2] = { '\0', '\0' };
+	const char *key;
 	switch (virtual_key) {
 	case VK_SHIFT: {
 	} return;
@@ -220,137 +212,137 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	case VK_MENU: {
 	} return;
 	case VK_BACK: {
-		input_string += "BS";
+		key = "BS";
 	} break;
 	case VK_TAB: {
-		input_string += "Tab";
+		key = "Tab";
 	} break;
 	case VK_RETURN: {
-		input_string += "CR";
+		key = "CR";
 	} break;
 	case VK_ESCAPE: {
-		input_string += "Esc";
+		key = "Esc";
 	} break;
 	case VK_PRIOR: {
-		input_string += "PageUp";
+		key = "PageUp";
 	} break;
 	case VK_NEXT: {
-		input_string += "PageDown";
+		key = "PageDown";
 	} break;
 	case VK_HOME: {
-		input_string += "Home";
+		key = "Home";
 	} break;
 	case VK_END: {
-		input_string += "End";
+		key = "End";
 	} break;
 	case VK_LEFT: {
-		input_string += "Left";
+		key = "Left";
 	} break;
 	case VK_UP: {
-		input_string += "Up";
+		key = "Up";
 	} break;
 	case VK_RIGHT: {
-		input_string += "Right";
+		key = "Right";
 	} break;
 	case VK_DOWN: {
-		input_string += "Down";
+		key = "Down";
 	} break;
 	case VK_INSERT: {
-		input_string += "Insert";
+		key = "Insert";
 	} break;
 	case VK_DELETE: {
-		input_string += "Del";
+		key = "Del";
 	} break;
 	case VK_NUMPAD0: {
-		input_string += "k0";
+		key = "k0";
 	} break;
 	case VK_NUMPAD1: {
-		input_string += "k1";
+		key = "k1";
 	} break;
 	case VK_NUMPAD2: {
-		input_string += "k2";
+		key = "k2";
 	} break;
 	case VK_NUMPAD3: {
-		input_string += "k3";
+		key = "k3";
 	} break;
 	case VK_NUMPAD4: {
-		input_string += "k4";
+		key = "k4";
 	} break;
 	case VK_NUMPAD5: {
-		input_string += "k5";
+		key = "k5";
 	} break;
 	case VK_NUMPAD6: {
-		input_string += "k6";
+		key = "k6";
 	} break;
 	case VK_NUMPAD7: {
-		input_string += "k7";
+		key = "k7";
 	} break;
 	case VK_NUMPAD8: {
-		input_string += "k8";
+		key = "k8";
 	} break;
 	case VK_NUMPAD9: {
-		input_string += "k9";
+		key = "k9";
 	} break;
 	case VK_MULTIPLY: {
-		input_string += "kMultiply";
+		key = "kMultiply";
 	} break;
 	case VK_ADD: {
-		input_string += "kPlus";
+		key = "kPlus";
 	} break;
 	case VK_SEPARATOR: {
-		input_string += "kComma";
+		key = "kComma";
 	} break;
 	case VK_SUBTRACT: {
-		input_string += "kMinus";
+		key = "kMinus";
 	} break;
 	case VK_DECIMAL: {
-		input_string += "kPoint";
+		key = "kPoint";
 	} break;
 	case VK_DIVIDE: {
-		input_string += "kDivide";
+		key = "kDivide";
 	} break;
 	case VK_F1: {
-		input_string += "F1";
+		key = "F1";
 	} break;
 	case VK_F2: {
-		input_string += "F2";
+		key = "F2";
 	} break;
 	case VK_F3: {
-		input_string += "F3";
+		key = "F3";
 	} break;
 	case VK_F4: {
-		input_string += "F4";
+		key = "F4";
 	} break;
 	case VK_F5: {
-		input_string += "F5";
+		key = "F5";
 	} break;
 	case VK_F6: {
-		input_string += "F6";
+		key = "F6";
 	} break;
 	case VK_F7: {
-		input_string += "F7";
+		key = "F7";
 	} break;
 	case VK_F8: {
-		input_string += "F8";
+		key = "F8";
 	} break;
 	case VK_F9: {
-		input_string += "F9";
+		key = "F9";
 	} break;
 	case VK_F10: {
-		input_string += "F10";
+		key = "F10";
 	} break;
 	case VK_F11: {
-		input_string += "F11";
+		key = "F11";
 	} break;
 	case VK_F12: {
-		input_string += "F12";
+		key = "F12";
 	} break;
-
 	default: {
 		if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
 			(ctrl_down || alt_down)) {
 			// Convert to lower case
-			input_string += static_cast<char>(virtual_key |= 32);
+			single_key[0] = static_cast<char>(virtual_key |= 32);
+			key = single_key;
 		}
 		else {
 			return;
@@ -358,14 +350,14 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	} break;
 	}
 
-	input_string += ">";
+	snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>", shift_down ? "S-" : "", ctrl_down ? "C-" : "", alt_down ? "M-" : "", key);
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, input_string.c_str());
+	mpack_write_cstr(&writer, input_string);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);

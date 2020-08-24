@@ -132,7 +132,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;d3d11.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
     </Link>
@@ -157,7 +157,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>user32.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;d3d11.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
     </Link>
@@ -178,6 +178,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\mpack_helper.h" />
+    <ClInclude Include="src\common\vec.h" />
     <ClInclude Include="src\nvim\nvim.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\renderer\glyph_renderer.h" />

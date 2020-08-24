@@ -6,80 +6,194 @@
 
 #define WIN_CHECK(x) { \
 HRESULT ret = x; \
-if(ret != S_OK) printf("HRESULT: %s is 0x%X in %s at line %d\n", #x, x, __FILE__, __LINE__); \
+if(ret != S_OK) printf("0x%X\n", ret); \
+assert(ret == S_OK); \
+}
+
+template<typename T>
+inline void SafeRelease(T **p) {
+	if (*p) {
+		(*p)->Release();
+		*p = nullptr;
+	}
+}
+
+inline RECT ToRect(D2D1_RECT_F *rect) {
+	return RECT {
+		.left = static_cast<LONG>(roundf((*rect).left)),
+		.top = static_cast<LONG>(roundf((*rect).top)),
+		.right = static_cast<LONG>(roundf((*rect).right)),
+		.bottom = static_cast<LONG>(roundf((*rect).bottom))
+	};
+}
+
+void InitializeD2D(Renderer *renderer) {
+	D2D1_FACTORY_OPTIONS options {};
+#ifndef NDEBUG
+	options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
+#endif
+
+	WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, options, &renderer->d2d_factory));
+}
+
+void InitializeD3D(Renderer *renderer) {
+	uint32_t flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifndef NDEBUG
+	flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+	// Force DirectX 11.1
+	ID3D11Device *temp_device;
+	ID3D11DeviceContext *temp_context;
+	D3D_FEATURE_LEVEL feature_levels[] = { 
+		D3D_FEATURE_LEVEL_11_1,         
+		D3D_FEATURE_LEVEL_11_0,
+		D3D_FEATURE_LEVEL_10_1,
+		D3D_FEATURE_LEVEL_10_0,
+		D3D_FEATURE_LEVEL_9_3,
+		D3D_FEATURE_LEVEL_9_2,
+		D3D_FEATURE_LEVEL_9_1 
+	};
+	WIN_CHECK(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, feature_levels,
+		ARRAYSIZE(feature_levels), D3D11_SDK_VERSION, &temp_device, &renderer->d3d_feature_level, &temp_context));
+	WIN_CHECK(temp_device->QueryInterface(__uuidof(ID3D11Device2), reinterpret_cast<void **>(&renderer->d3d_device)));
+	WIN_CHECK(temp_context->QueryInterface(__uuidof(ID3D11DeviceContext2), reinterpret_cast<void **>(&renderer->d3d_context)));
+
+	IDXGIDevice3 *dxgi_device;
+	WIN_CHECK(renderer->d3d_device->QueryInterface(__uuidof(IDXGIDevice3), reinterpret_cast<void **>(&dxgi_device)));
+	WIN_CHECK(renderer->d2d_factory->CreateDevice(dxgi_device, &renderer->d2d_device));
+	WIN_CHECK(renderer->d2d_device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS, &renderer->d2d_context));
+
+	SafeRelease(&dxgi_device);
+}
+
+void InitializeDWrite(Renderer *renderer) {
+	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory4), reinterpret_cast<IUnknown **>(&renderer->dwrite_factory)));
+}
+
+void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint32_t height) {
+	renderer->pixel_size.width = width;
+	renderer->pixel_size.height = height;
+
+	ID3D11RenderTargetView *null_views[] = { nullptr };
+	renderer->d3d_context->OMSetRenderTargets(ARRAYSIZE(null_views), null_views, nullptr);
+	renderer->d2d_context->SetTarget(nullptr);
+	renderer->d3d_context->Flush();
+
+	if (renderer->dxgi_swapchain) {
+		renderer->d2d_target_bitmap->Release();
+		//renderer->d2d_scroll_bitmap->Release();
+
+		WIN_CHECK(renderer->dxgi_swapchain->ResizeBuffers(
+			2,
+			width,
+			height,
+			DXGI_FORMAT_B8G8R8A8_UNORM,
+			0
+		));
+
+		// TODO: Handle device lost
+	}
+	else {
+		DXGI_SWAP_CHAIN_DESC1 swapchain_desc {
+			.Width = width,
+			.Height = height,
+			.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
+			.SampleDesc = {
+				.Count = 1,
+				.Quality = 0
+			},
+			.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+			.BufferCount = 2,
+			.Scaling = DXGI_SCALING_NONE,
+			.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+			.AlphaMode = DXGI_ALPHA_MODE_IGNORE
+		};
+
+		IDXGIDevice3 *dxgi_device;
+		WIN_CHECK(renderer->d3d_device->QueryInterface(__uuidof(IDXGIDevice3), reinterpret_cast<void **>(&dxgi_device)));
+		IDXGIAdapter *dxgi_adapter;
+		WIN_CHECK(dxgi_device->GetAdapter(&dxgi_adapter));
+		IDXGIFactory2 *dxgi_factory;
+		WIN_CHECK(dxgi_adapter->GetParent(IID_PPV_ARGS(&dxgi_factory)));
+
+		WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(renderer->d3d_device,
+			renderer->hwnd, &swapchain_desc, nullptr, nullptr, &renderer->dxgi_swapchain));
+		WIN_CHECK(dxgi_device->SetMaximumFrameLatency(1));
+		
+		SafeRelease(&dxgi_device);
+		SafeRelease(&dxgi_adapter);
+		SafeRelease(&dxgi_factory);
+	}
+
+	constexpr D2D1_BITMAP_PROPERTIES1 target_bitmap_properties {
+		.pixelFormat = D2D1_PIXEL_FORMAT {
+			.format = DXGI_FORMAT_B8G8R8A8_UNORM,
+			.alphaMode = D2D1_ALPHA_MODE_IGNORE
+		},
+		.dpiX = 96.0f,
+		.dpiY = 96.0f,
+		.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW
+	};
+	IDXGISurface2 *dxgi_backbuffer;
+	WIN_CHECK(renderer->dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&dxgi_backbuffer)));
+	WIN_CHECK(renderer->d2d_context->CreateBitmapFromDxgiSurface(
+		dxgi_backbuffer,
+		&target_bitmap_properties,
+		&renderer->d2d_target_bitmap
+	));
+	renderer->initial_draw = true;
+
+	SafeRelease(&dxgi_backbuffer);
 }
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size) {
 	renderer->hwnd = hwnd;
 	renderer->dpi_scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
 
-	WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &renderer->d2d_factory));
-
-	D2D1_RENDER_TARGET_PROPERTIES target_props = D2D1_RENDER_TARGET_PROPERTIES {
-		.type = D2D1_RENDER_TARGET_TYPE_DEFAULT,
-		.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
-		.dpiX = 96.0f,
-		.dpiY = 96.0f,
-	};
+	InitializeD2D(renderer);
+	InitializeD3D(renderer);
+	InitializeDWrite(renderer);
+	renderer->glyph_renderer = new GlyphRenderer;
 
 	RECT client_rect;
 	GetClientRect(hwnd, &client_rect);
-	renderer->pixel_size = D2D1_SIZE_U {
-		.width = static_cast<uint32_t>(client_rect.right - client_rect.left),
-		.height = static_cast<uint32_t>(client_rect.bottom - client_rect.top)
-	};
-	D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-		.hwnd = hwnd,
-		.pixelSize = renderer->pixel_size,
-		.presentOptions = D2D1_PRESENT_OPTIONS_IMMEDIATELY
-	};
-
-	WIN_CHECK(renderer->d2d_factory->CreateHwndRenderTarget(target_props, hwnd_props, &renderer->render_target));
-	renderer->render_target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
-	renderer->render_target->CreateBitmap(
-		renderer->pixel_size,
-		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE)),
-		&renderer->scroll_region_bitmap
+	InitializeWindowDependentResources(
+		renderer,
+		static_cast<uint32_t>(client_rect.right - client_rect.left),
+		static_cast<uint32_t>(client_rect.bottom - client_rect.top)
 	);
 
-	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
-
-	renderer->glyph_renderer = new GlyphRenderer;
 	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
 }
 
 void RendererShutdown(Renderer *renderer) {
-	delete renderer->glyph_renderer;
-
-	renderer->scroll_region_bitmap->Release();
-	renderer->d2d_factory->Release();
-	renderer->render_target->Release();
-	renderer->write_factory->Release();
-	renderer->text_format->Release();
+	SafeRelease(&renderer->d3d_device);
+	SafeRelease(&renderer->d3d_context);
+	SafeRelease(&renderer->dxgi_swapchain);
+	SafeRelease(&renderer->d2d_factory);
+	SafeRelease(&renderer->d2d_device);
+	SafeRelease(&renderer->d2d_context);
+	SafeRelease(&renderer->d2d_target_bitmap);
+	SafeRelease(&renderer->dwrite_factory);
+	SafeRelease(&renderer->dwrite_text_format);
+	SafeRelease(&renderer->glyph_renderer);
 
 	free(renderer->grid_chars);
 	free(renderer->grid_cell_properties);
 }
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height) {
-	renderer->pixel_size.width = width;
-	renderer->pixel_size.height = height;
-	WIN_CHECK(renderer->render_target->Resize(&renderer->pixel_size));
-	renderer->scroll_region_bitmap->Release();
-	renderer->render_target->CreateBitmap(
-		renderer->pixel_size,
-		D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE)),
-		&renderer->scroll_region_bitmap
-	);
+	InitializeWindowDependentResources(renderer, width, height);
 }
 
 float GetCharacterWidth(Renderer *renderer, wchar_t wchar) {
 	// Create dummy text format to hit test the width of the font
 	IDWriteTextLayout *test_text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
+	WIN_CHECK(renderer->dwrite_factory->CreateTextLayout(
 		&wchar,
 		1,
-		renderer->text_format,
+		renderer->dwrite_text_format,
 		0.0f,
 		0.0f,
 		&test_text_layout
@@ -96,7 +210,7 @@ float GetCharacterWidth(Renderer *renderer, wchar_t wchar) {
 void UpdateFontSize(Renderer *renderer, float font_size) {
 	renderer->font_size = font_size * renderer->dpi_scale;
 
-	WIN_CHECK(renderer->write_factory->CreateTextFormat(
+	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
 		nullptr,
 		DWRITE_FONT_WEIGHT_NORMAL,
@@ -104,7 +218,7 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 		DWRITE_FONT_STRETCH_NORMAL,
 		renderer->font_size,
 		L"en-us",
-		&renderer->text_format
+		&renderer->dwrite_text_format
 	));
 
 	// Update the width based on a hit test
@@ -117,14 +231,14 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 	renderer->font_height = (static_cast<float>(font_height_em) * renderer->font_size) /
 		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
 
-	WIN_CHECK(renderer->text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
-	WIN_CHECK(renderer->text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
+	WIN_CHECK(renderer->dwrite_text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
+	WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
 	float baseline = (static_cast<float>(renderer->font_metrics.ascent) * renderer->font_size) /
 		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
 
 	renderer->line_spacing = ceilf(renderer->font_height);
-	WIN_CHECK(renderer->text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->line_spacing, baseline));
+	WIN_CHECK(renderer->dwrite_text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->line_spacing, baseline));
 }
 
 void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) {
@@ -133,7 +247,7 @@ void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) 
 	}
 
 	IDWriteFontCollection *font_collection;
-	WIN_CHECK(renderer->write_factory->GetSystemFontCollection(&font_collection));
+	WIN_CHECK(renderer->dwrite_factory->GetSystemFontCollection(&font_collection));
 
 	int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
 
@@ -172,8 +286,8 @@ void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_st
 		return;
 	}
 
-	if (renderer->text_format) {
-		renderer->text_format->Release();
+	if (renderer->dwrite_text_format) {
+		renderer->dwrite_text_format->Release();
 	}
 	UpdateFontMetrics(renderer, font_string, strlen);
 	UpdateFontSize(renderer, font_size);
@@ -281,11 +395,11 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
 	ID2D1SolidColorBrush *brush;
 	uint32_t color = CreateBackgroundColor(renderer, hl_attribs);
-	WIN_CHECK(renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
+	WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(color), &brush));
 
-	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
-	renderer->render_target->FillRectangle(&rect, brush);
-	renderer->render_target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+	renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+	renderer->d2d_context->FillRectangle(rect, brush);
+	renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
 	brush->Release();
 }
@@ -310,27 +424,34 @@ D2D1_RECT_F GetCursorForegroundRect(Renderer *renderer, D2D1_RECT_F cursor_bg_re
 
 void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character, HighlightAttributes *hl_attribs) {
 	IDWriteTextLayout *text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
+	WIN_CHECK(renderer->dwrite_factory->CreateTextLayout(
 		&character,
 		1,
-		renderer->text_format,
+		renderer->dwrite_text_format,
 		rect.right - rect.left,
 		rect.bottom - rect.top,
 		&text_layout
 	));
 	ApplyHighlightAttributes(renderer, hl_attribs, text_layout, 0, 1);
-	
+
+	renderer->d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
 	text_layout->Release();
+	renderer->d2d_context->PopAxisAlignedClip();
 }
 
 void EraseCursor(Renderer *renderer) {
 	int cursor_grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
 	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
+	CellProperty prop0 = renderer->grid_cell_properties[cursor_grid_offset];
+	CellProperty prop1 = renderer->grid_cell_properties[cursor_grid_offset - 1];
 
-	// If the cursor is outside the bounds of the client, skip erase
-	if (cursor_grid_offset > renderer->grid_rows * renderer->grid_cols ||
-		renderer->grid_chars[cursor_grid_offset] == L'\0') {
+	// If the cursor is outside the bounds of the client, or skip if the cursor
+	// is in the middle of a wide character. This happens whenever inserting a wide
+	// character from visual mode in vim
+	if ((cursor_grid_offset > renderer->grid_rows * renderer->grid_cols) ||
+		(cursor_grid_offset > 0 && renderer->grid_chars[cursor_grid_offset] == L'\0' &&
+			renderer->grid_cell_properties[cursor_grid_offset - 1].is_wide_char)) {
 		return;
 	}
 
@@ -350,6 +471,7 @@ void EraseCursor(Renderer *renderer) {
 	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_cell_properties[cursor_grid_offset].hl_attrib_id];
 	DrawBackgroundRect(renderer, cursor_rect, hl_attribs);
 	DrawSingleCharacter(renderer, cursor_rect, character_under_cursor, hl_attribs);
+	renderer->dirty_rects.push_back(ToRect(&cursor_rect));
 }
 
 void DrawCursor(Renderer *renderer) {
@@ -379,6 +501,7 @@ void DrawCursor(Renderer *renderer) {
 	if (renderer->cursor.mode_info->shape == CursorShape::Block) {
 		DrawSingleCharacter(renderer, cursor_fg_rect, character_under_cursor, &cursor_hl_attribs);
 	}
+	renderer->dirty_rects.push_back(ToRect(&cursor_fg_rect));
 }
 
 void DrawGridLine(Renderer *renderer, int row, int start, int end) {
@@ -392,10 +515,10 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	};
 
 	IDWriteTextLayout *temp_text_layout = nullptr;
-	WIN_CHECK(renderer->write_factory->CreateTextLayout(
+	WIN_CHECK(renderer->dwrite_factory->CreateTextLayout(
 		&renderer->grid_chars[base],
 		end - start,
-		renderer->text_format,
+		renderer->dwrite_text_format,
 		rect.right - rect.left,
 		rect.bottom - rect.top,
 		&temp_text_layout
@@ -436,12 +559,18 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	
 	// Draw the remaining columns, there is always atleast the last column to draw,
 	// but potentially more in case the last X columns share the same hl_attrib
-	rect.left = (start + col_offset) * renderer->font_width;
+	D2D1_RECT_F last_rect = rect;
+	last_rect.left = (start + col_offset) * renderer->font_width;
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, end);
 
+	renderer->d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
 	text_layout->Draw(renderer, renderer->glyph_renderer, start * renderer->font_width, rect.top);
+	renderer->d2d_context->PopAxisAlignedClip();
 	text_layout->Release();
+
+	// Mark line rect dirty for redraw
+	renderer->dirty_rects.push_back(ToRect(&rect));
 }
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
@@ -471,14 +600,13 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 
 			// Right part of double-width char is the empty string
 			// skip the conversion, since DirectWrite ignores embedded
-			// null bytes, we can simply insert one and go to the next column
+			// null bytes, we can simply insert one and proceed to the next column
 			if (strlen == 0) {
 				int offset = row * renderer->grid_cols + col_offset;
 				renderer->grid_cell_properties[offset - 1].is_wide_char = true;
 
 				renderer->grid_chars[offset] = L'\0';
 				renderer->grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
-				renderer->grid_cell_properties[offset].is_wide_char = true;
 				col_offset += 1;
 				continue;
 			}
@@ -502,6 +630,7 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			int wstrlen_with_repetitions = wstrlen * repeat;
 			for (int k = 0; k < wstrlen_with_repetitions; ++k) {
 				renderer->grid_cell_properties[offset + k].hl_attrib_id = hl_attrib_id;
+				renderer->grid_cell_properties[offset + k].is_wide_char = false;
 			}
 
 			col_offset += wstrlen_with_repetitions;
@@ -595,11 +724,12 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 
 	// This part is slightly cryptic, basically we're just
 	// iterating from top to bottom or vice versa depending on scroll direction.
-	int64_t start_row = rows > 0 ? top : bottom - 1;
-	int64_t end_row = rows > 0 ? bottom - 1 : top;
-	int64_t increment = rows > 0 ? 1 : -1;
+	bool scrolling_down = rows > 0;
+	int64_t start_row = scrolling_down ? top : bottom - 1;
+	int64_t end_row = scrolling_down ? bottom - 1 : top;
+	int64_t increment = scrolling_down ? 1 : -1;
 
-	for (int64_t i = start_row; rows > 0 ? i <= end_row : i >= end_row; i += increment) {
+	for (int64_t i = start_row; scrolling_down ? i <= end_row : i >= end_row; i += increment) {
 		// Clip anything outside the scroll region
 		int64_t target_row = i - rows;
 		if (target_row < top || target_row >= bottom) {
@@ -619,50 +749,29 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 		);
 	}
 
-	D2D1_RECT_U scroll_region_origin {
-		.left = static_cast<uint32_t>(roundf(left * renderer->font_width)),
-		.top = static_cast<uint32_t>(top * renderer->line_spacing),
-		.right = static_cast<uint32_t>(roundf(right * renderer->font_width)),
-		.bottom = static_cast<uint32_t>(bottom * renderer->line_spacing)
+	renderer->scrolled_rect = RECT {
+		.left = static_cast<LONG>(roundf(left * renderer->font_width)),
+		.top = static_cast<LONG>(top * renderer->line_spacing),
+		.right = static_cast<LONG>(roundf(right * renderer->font_width)),
+		.bottom = static_cast<LONG>(bottom * renderer->line_spacing)
 	};
-	D2D1_RECT_F scroll_region_target {
-		.left = roundf(left * renderer->font_width),
-		.top = (top - rows) * renderer->line_spacing,
-		.right = roundf(right * renderer->font_width),
-		.bottom = (bottom - rows) * renderer->line_spacing
+	if (scrolling_down) {
+		renderer->scrolled_rect.bottom = min(
+			renderer->scrolled_rect.bottom,
+			renderer->scrolled_rect.bottom - static_cast<LONG>(rows * renderer->line_spacing)
+		);
+	}
+	else {
+		renderer->scrolled_rect.top = max(
+			renderer->scrolled_rect.top,
+			renderer->scrolled_rect.top - static_cast<LONG>(rows * renderer->line_spacing)
+		);
+	}
+	renderer->scroll_offset = POINT {
+		.x = 0,
+		.y =-static_cast<LONG>(rows * renderer->line_spacing)
 	};
-
-	constexpr D2D1_POINT_2U dest_point { .x = 0, .y = 0 };
-	renderer->scroll_region_bitmap->CopyFromRenderTarget(
-		&dest_point,
-		renderer->render_target,
-		&scroll_region_origin
-	);
-
-	renderer->render_target->PushAxisAlignedClip(
-		D2D1_RECT_F {
-			.left = roundf(left * renderer->font_width),
-			.top = top * renderer->line_spacing,
-			.right = roundf(right * renderer->font_width),
-			.bottom = bottom * renderer->line_spacing
-		},
-		D2D1_ANTIALIAS_MODE_ALIASED
-	);
-
-	D2D1_RECT_F bitmap_copy_rect {
-		.left = 0.0f,
-		.top = 0.0f,
-		.right = scroll_region_target.right - scroll_region_target.left,
-		.bottom = scroll_region_target.bottom - scroll_region_target.top
-	};
-	renderer->render_target->DrawBitmap(
-		renderer->scroll_region_bitmap,
-		&scroll_region_target,
-		1.0f,
-		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-		&bitmap_copy_rect
-	);
-	renderer->render_target->PopAxisAlignedClip();
+	renderer->scrolled = true;
 }
 
 void DrawBorderRectangles(Renderer *renderer) {
@@ -684,6 +793,8 @@ void DrawBorderRectangles(Renderer *renderer) {
 
 	DrawBackgroundRect(renderer, vertical_rect, &renderer->hl_attribs[0]);
 	DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
+	renderer->dirty_rects.push_back(ToRect(&vertical_rect));
+	renderer->dirty_rects.push_back(ToRect(&horizontal_rect));
 }
 
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
@@ -728,18 +839,41 @@ void ClearGrid(Renderer *renderer) {
 		.bottom = renderer->grid_rows * renderer->line_spacing
 	};
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
+	renderer->dirty_rects.push_back(ToRect(&rect));
+}
+
+void StartDraw(Renderer *renderer) {
+	if (!renderer->draw_active) {
+		renderer->d2d_context->SetTarget(renderer->d2d_target_bitmap);
+		renderer->d2d_context->BeginDraw();
+		renderer->d2d_context->SetTransform(D2D1::IdentityMatrix());
+		renderer->draw_active = true;
+	}
+}
+
+void FinishDraw(Renderer *renderer) {
+	renderer->d2d_context->EndDraw();
+
+	constexpr DXGI_PRESENT_PARAMETERS default_present_params {};
+	DXGI_PRESENT_PARAMETERS present_params {
+		.DirtyRectsCount = static_cast<uint32_t>(renderer->dirty_rects.size()),
+		.pDirtyRects = renderer->dirty_rects.data(),
+	};
+	if (renderer->scrolled) {
+		present_params.pScrollRect = &renderer->scrolled_rect;
+		present_params.pScrollOffset = &renderer->scroll_offset;
+	}
+
+	renderer->dxgi_swapchain->Present1(0, 0, renderer->initial_draw ? &default_present_params : &present_params);
+	renderer->draw_active = false;
+	renderer->initial_draw = false;
+	renderer->scrolled = false;
+	renderer->dirty_rects.clear();
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
-	if (!renderer->draw_active) {
-		renderer->render_target->BeginDraw();
-		renderer->render_target->SetTransform(D2D1::IdentityMatrix());
-		renderer->draw_active = true;
-	}
+	StartDraw(renderer);
 
-	//mpack_node_print_to_stdout(params);
-
-	bool force_redraw = false;
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
 	for (uint64_t i = 0; i < redraw_commands_length; ++i) {
 		mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
@@ -780,15 +914,21 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		else if (MPackMatchString(redraw_command_name, "flush")) {
 			DrawCursor(renderer);
 			DrawBorderRectangles(renderer);
-			renderer->render_target->EndDraw();
-			renderer->draw_active = false;
+			FinishDraw(renderer);
 		}
 	}
 }
 
-CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {
-	return CursorPos {
-		.row = static_cast<int>(mouse_pos.y / renderer->line_spacing),
-		.col = static_cast<int>(mouse_pos.x / renderer->font_width)
+GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height) {
+	return GridSize {
+		.rows = static_cast<int>(height / renderer->line_spacing),
+		.cols = static_cast<int>(width / renderer->font_width)
+	};
+}
+
+GridPoint RendererCursorToGridPoint(Renderer *renderer, POINTS cursor_pos) {
+	return GridPoint {
+		.row = static_cast<int>(cursor_pos.y / renderer->line_spacing),
+		.col = static_cast<int>(cursor_pos.x / renderer->font_width)
 	};
 }

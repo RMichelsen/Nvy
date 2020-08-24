@@ -37,7 +37,8 @@ constexpr int MAX_MPACK_OUTBOUND_MESSAGE_SIZE = 4096;
 
 struct Nvim {
 	int64_t next_msg_id;
-	std::vector<NvimRequest> msg_id_to_method;
+	Vec<NvimRequest> msg_id_to_method;
+	//std::vector<NvimRequest> msg_id_to_method;
 
 	HWND hwnd;
 	HANDLE stdin_read;

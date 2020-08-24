@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 #include <cassert>
 #include <cstdint>
@@ -9,11 +8,14 @@
 
 #include <windows.h>
 
-#include <d2d1.h>
-#include <d2d1helper.h>
-#include <dwrite_1.h>
+#include <d3d11_4.h>
+#include <d2d1_3.h>
+#include <d2d1_3helper.h>
+#include <dwrite_3.h>
 
 #include "mpack/mpack.h"
+
+#include "common/vec.h"
 
 // WPARAM: mpack_tree_t *, LPARAM: none
 #define WM_NVIM_MESSAGE WM_USER
