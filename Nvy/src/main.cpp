@@ -10,6 +10,7 @@ struct Context {
 	CursorPos cached_cursor_pos;
 };
 
+#include <chrono>
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
@@ -30,7 +31,11 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 	else if (result.type == MPackMessageType::Notification) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
+			auto t1 = std::chrono::high_resolution_clock::now();
 			RendererRedraw(context->renderer, result.params);
+			auto t2 = std::chrono::high_resolution_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+			printf("Redraw Duration: %llu microseconds\n", duration);
 		}
 	}
 }
@@ -63,6 +68,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_NVIM_MESSAGE: {
 		mpack_tree_t *tree = reinterpret_cast<mpack_tree_t *>(wparam);
 		ProcessMPackMessage(context, tree);
+	} return 0;
+	case WM_RENDERER_FONT_UPDATE: {
+		int requested_rows = static_cast<int>(context->renderer->pixel_size.height / context->renderer->font_height);
+		int requested_cols = static_cast<int>(context->renderer->pixel_size.width / context->renderer->font_width);
+		NvimSendResize(context->nvim, requested_rows, requested_cols);
 	} return 0;
 	case WM_CHAR: {
 		// Special case for <LT>
@@ -143,17 +153,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Release, cursor_pos.row, cursor_pos.col);
 	} return 0;
 	case WM_MOUSEWHEEL: {
+		bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+
 		short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
 		short scroll_amount = wheel_distance / WHEEL_DELTA;
 		CursorPos cursor_pos = RendererTranslateMousePosToGrid(context->renderer, MAKEPOINTS(lparam));
-		if (scroll_amount > 0) {
-			for (int i = 0; i < scroll_amount; ++i) {
-				NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelUp, cursor_pos.row, cursor_pos.col);
+		MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp : MouseAction::MouseWheelDown;
+
+		if (should_resize_font) {
+			RendererUpdateFont(context->renderer, (context->renderer->font_size / context->renderer->dpi_scale) + (scroll_amount * 2.0f));
+			int requested_rows = static_cast<int>(context->renderer->pixel_size.height / context->renderer->font_height);
+			int requested_cols = static_cast<int>(context->renderer->pixel_size.width / context->renderer->font_width);
+			if (requested_rows != context->renderer->grid_rows || requested_cols != context->renderer->grid_cols) {
+				NvimSendResize(context->nvim, requested_rows, requested_cols);
 			}
 		}
 		else {
-			for (int i = scroll_amount; i < 0; ++i) {
-				NvimSendMouseInput(context->nvim, MouseButton::Wheel, MouseAction::MouseWheelDown, cursor_pos.row, cursor_pos.col);
+			for (int i = 0; i < abs(scroll_amount); ++i) {
+				NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, cursor_pos.row, cursor_pos.col);
 			}
 		}
 	} return 0;
@@ -172,7 +189,7 @@ void OpenConsole() {
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	//OpenConsole();
+	OpenConsole();
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
@@ -208,7 +225,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	ShowWindow(hwnd, n_cmd_show);
 
 	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, L"Fira Code", 25.0f);
+	RendererInitialize(&renderer, hwnd, "Fira Code", 25.0f);
 
 	Nvim nvim {};
 	NvimInitialize(&nvim, hwnd);

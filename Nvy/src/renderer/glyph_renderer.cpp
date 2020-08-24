@@ -34,6 +34,7 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 		GlyphDrawingEffect *drawing_effect;
 		client_drawing_effect->QueryInterface(__uuidof(GlyphDrawingEffect), reinterpret_cast<void **>(&drawing_effect));
 		color = drawing_effect->color;
+		drawing_effect->Release();
 	}
 	else {
 		color = renderer->hl_attribs[0].foreground;
@@ -50,6 +51,7 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 		);
 	}
 
+	brush->Release();
 	return hr;
 }
 

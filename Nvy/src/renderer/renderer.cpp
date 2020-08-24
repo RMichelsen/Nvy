@@ -9,7 +9,8 @@ HRESULT ret = x; \
 if(ret != S_OK) printf("HRESULT: %s is 0x%X in %s at line %d\n", #x, x, __FILE__, __LINE__); \
 }
 
-void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size) {
+void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size) {
+	renderer->hwnd = hwnd;
 	renderer->dpi_scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
 
 	WIN_CHECK(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &renderer->d2d_factory));
@@ -40,20 +41,12 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, floa
 
 	renderer->glyph_renderer = new GlyphRenderer;
 
-	RendererUpdateFont(renderer, font, font_size);
-}
-
-void ReleaseAllDrawingEffects(Renderer *renderer) {
-	for (GlyphDrawingEffect *effect : renderer->color_drawing_effects) {
-		effect->Release();
-	}
-	renderer->color_drawing_effects.clear();
+	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
 }
 
 void RendererShutdown(Renderer *renderer) {
 	delete renderer->glyph_renderer;
 
-	ReleaseAllDrawingEffects(renderer);
 	renderer->d2d_factory->Release();
 	renderer->render_target->Release();
 	renderer->write_factory->Release();
@@ -69,33 +62,8 @@ void RendererResize(Renderer *renderer, uint32_t width, uint32_t height) {
 	WIN_CHECK(renderer->render_target->Resize(&renderer->pixel_size));
 }
 
-void UpdateFontMetrics(Renderer *renderer, const wchar_t* font) {
-	IDWriteFontCollection *font_collection;
-	WIN_CHECK(renderer->write_factory->GetSystemFontCollection(&font_collection));
-
-	uint32_t index;
-	BOOL exists;
-	font_collection->FindFamilyName(font, &index, &exists);
-	assert(exists);
-
-	IDWriteFontFamily *font_family;
-	font_collection->GetFontFamily(index, &font_family);
-
-	IDWriteFont *write_font;
-	font_family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &write_font);
-
-	IDWriteFont1 *write_font_1;
-	write_font->QueryInterface<IDWriteFont1>(&write_font_1);
-	write_font_1->GetMetrics(&renderer->font_metrics);
-
-	write_font_1->Release();
-	write_font->Release();
-	font_family->Release();
-	font_collection->Release();
-}
-
 float GetCharacterWidth(Renderer *renderer, wchar_t wchar) {
-	// Create dummy text format to hit test the size of the font
+	// Create dummy text format to hit test the width of the font
 	IDWriteTextLayout *test_text_layout = nullptr;
 	WIN_CHECK(renderer->write_factory->CreateTextLayout(
 		&wchar,
@@ -114,17 +82,8 @@ float GetCharacterWidth(Renderer *renderer, wchar_t wchar) {
 	return metrics.width;
 }
 
-void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size) {
+void UpdateFontSize(Renderer *renderer, float font_size) {
 	renderer->font_size = font_size * renderer->dpi_scale;
-
-	if (lstrcmpW(renderer->font, font)) {
-		renderer->font = font;
-		UpdateFontMetrics(renderer, font);
-	}
-
-	if (renderer->text_format) {
-		renderer->text_format->Release();
-	}
 
 	WIN_CHECK(renderer->write_factory->CreateTextFormat(
 		renderer->font,
@@ -137,7 +96,7 @@ void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size
 		&renderer->text_format
 	));
 
-	// We get the width from the hit test, this seems to be the only way?
+	// Update the width based on a hit test
 	renderer->font_width = GetCharacterWidth(renderer, L'A');
 
 	// We calculate the height and the baseline from the font metrics, 
@@ -146,12 +105,65 @@ void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size
 	int font_height_em = renderer->font_metrics.ascent + renderer->font_metrics.descent + renderer->font_metrics.lineGap;
 	renderer->font_height = (static_cast<float>(font_height_em) * renderer->font_size) /
 		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
-	float baseline = (static_cast<float>(renderer->font_metrics.ascent) * renderer->font_size) / 
-		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
 
 	WIN_CHECK(renderer->text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
 	WIN_CHECK(renderer->text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
+
+	float baseline = (static_cast<float>(renderer->font_metrics.ascent) * renderer->font_size) /
+		static_cast<float>(renderer->font_metrics.designUnitsPerEm);
 	WIN_CHECK(renderer->text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height, baseline));
+}
+
+void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) {
+	if (strlen == 0) {
+		return;
+	}
+
+	IDWriteFontCollection *font_collection;
+	WIN_CHECK(renderer->write_factory->GetSystemFontCollection(&font_collection));
+
+	int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
+
+	if (wstrlen < MAX_FONT_LENGTH) {
+		MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, renderer->font, MAX_FONT_LENGTH - 1);
+		renderer->font[wstrlen] = L'\0';
+	}
+
+	uint32_t index;
+	BOOL exists;
+	font_collection->FindFamilyName(renderer->font, &index, &exists);
+
+	// Fallback font
+	if (!exists) {
+		font_collection->FindFamilyName(L"Consolas", &index, &exists);
+	}
+
+	IDWriteFontFamily *font_family;
+	font_collection->GetFontFamily(index, &font_family);
+
+	IDWriteFont *write_font;
+	font_family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &write_font);
+
+	IDWriteFont1 *write_font_1;
+	write_font->QueryInterface<IDWriteFont1>(&write_font_1);
+	write_font_1->GetMetrics(&renderer->font_metrics);
+
+	write_font_1->Release();
+	write_font->Release();
+	font_family->Release();
+	font_collection->Release();
+}
+
+void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string, int strlen) {
+	if (font_size > 100.0f || font_size < 5) {
+		return;
+	}
+
+	if (renderer->text_format) {
+		renderer->text_format->Release();
+	}
+	UpdateFontMetrics(renderer, font_string, strlen);
+	UpdateFontSize(renderer, font_size);
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
@@ -229,8 +241,7 @@ uint32_t CreateBackgroundColor(Renderer *renderer, HighlightAttributes *hl_attri
 
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
 	IDWriteTextLayout *text_layout, int start, int end) {
-	renderer->color_drawing_effects.push_back(new GlyphDrawingEffect(CreateForegroundColor(renderer, hl_attribs)));
-
+	GlyphDrawingEffect *drawing_effect = new GlyphDrawingEffect(CreateForegroundColor(renderer, hl_attribs));
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
@@ -249,9 +260,9 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	}
 	if (hl_attribs->flags & HL_ATTRIB_UNDERCURL) {
 		text_layout->SetUnderline(true, range);
-		renderer->color_drawing_effects.back()->undercurl = true;
+		drawing_effect->undercurl = true;
 	}
-	text_layout->SetDrawingEffect(renderer->color_drawing_effects.back(), range);
+	text_layout->SetDrawingEffect(drawing_effect, range);
 }
 
 void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttributes *hl_attribs) {
@@ -298,12 +309,24 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 	
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
 	text_layout->Release();
-	ReleaseAllDrawingEffects(renderer);
 }
 
 void EraseCursor(Renderer *renderer) {
-	wchar_t character_under_cursor = renderer->grid_chars[renderer->cursor.grid_offset];
-	int double_width_char_factor = GetCharacterWidth(renderer, character_under_cursor) > renderer->font_width ? 2 : 1;
+	int cursor_grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
+
+	// If the cursor is outside the bounds of the client,
+	// skip erase
+	if (cursor_grid_offset > renderer->grid_rows * renderer->grid_cols) {
+		return;
+	}
+
+	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
+	int double_width_char_factor = 1;
+	if (cursor_grid_offset < (renderer->grid_rows *renderer->grid_cols) &&
+		renderer->grid_chars[cursor_grid_offset + 1] == L'\0') {
+		double_width_char_factor += 1;
+	}
+
 	D2D1_RECT_F cursor_rect {
 		.left = renderer->cursor.col * renderer->font_width,
 		.top = renderer->cursor.row * renderer->font_height,
@@ -311,15 +334,21 @@ void EraseCursor(Renderer *renderer) {
 		.bottom = (renderer->cursor.row * renderer->font_height) + renderer->font_height
 	};
 
-	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[renderer->cursor.grid_offset]];
+	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[cursor_grid_offset]];
 	DrawBackgroundRect(renderer, cursor_rect, hl_attribs);
 	DrawSingleCharacter(renderer, cursor_rect, character_under_cursor, hl_attribs);
 }
 
 void DrawCursor(Renderer *renderer) {
-	wchar_t character_under_cursor = renderer->grid_chars[renderer->cursor.grid_offset];
-	int double_width_char_factor = GetCharacterWidth(renderer, character_under_cursor) > renderer->font_width ? 2 : 1;
-	
+	int cursor_grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
+
+	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
+	int double_width_char_factor = 1;
+	if (cursor_grid_offset < (renderer->grid_rows *renderer->grid_cols) && 
+		renderer->grid_chars[cursor_grid_offset + 1] == L'\0') {
+		double_width_char_factor += 1;
+	}
+		
 	HighlightAttributes cursor_hl_attribs = renderer->hl_attribs[renderer->cursor.mode_info->hl_attrib_index];
 	if (renderer->cursor.mode_info->hl_attrib_index == 0) {
 		cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
@@ -339,19 +368,24 @@ void DrawCursor(Renderer *renderer) {
 	}
 }
 
-void DrawGridLine(Renderer *renderer, int row) {
-	int base = row * renderer->grid_cols;
+void DrawGridLine(Renderer *renderer, int row, int start, int end) {
+	int base = row * renderer->grid_cols + start;
+
 	D2D1_RECT_F rect {
-		.left = 0 * renderer->font_width,
+		.left = start * renderer->font_width,
 		.top = row * renderer->font_height,
-		.right = renderer->grid_cols * renderer->font_width,
+		.right = end * renderer->font_width,
 		.bottom = (row * renderer->font_height) + renderer->font_height
 	};
+	if (renderer->grid_chars[base] == L'\0') {
+		DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
+		return;
+	}
 
 	IDWriteTextLayout *temp_text_layout = nullptr;
 	WIN_CHECK(renderer->write_factory->CreateTextLayout(
 		&renderer->grid_chars[base],
-		renderer->grid_cols,
+		end - start,
 		renderer->text_format,
 		rect.right - rect.left,
 		rect.bottom - rect.top,
@@ -363,26 +397,24 @@ void DrawGridLine(Renderer *renderer, int row) {
 
 	uint8_t hl_attrib_id = renderer->grid_hl_attrib_ids[base];
 	int col_offset = 0;
-	for (int i = 0; i < renderer->grid_cols; ++i) {
+	for (int i = 0; i < (end - start); ++i) {
 		float char_width = renderer->font_width;
 		bool double_width_char_next = false;
 		bool cursor_next = (row == renderer->cursor.row && i == renderer->cursor.col && renderer->cursor.mode_info);
 
-		if (i < renderer->grid_cols - 1 && renderer->grid_chars[base + i + 1] == L'\0') {
+		if (i < (end - start - 1) && renderer->grid_chars[base + i + 1] == L'\0') {
 			char_width = GetCharacterWidth(renderer, renderer->grid_chars[base + i]);
-			if (char_width > renderer->font_width) {
-				DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
-				text_layout->SetCharacterSpacing(0, (renderer->font_width * 2) - char_width, 0, range);
-			}
+			DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
+			text_layout->SetCharacterSpacing(0, (renderer->font_width * 2) - char_width, 0, range);
 		}
 
 		// Check if the attributes change, 
 		// if so draw until this point and continue with the new attributes
 		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
 			D2D1_RECT_F bg_rect {
-				.left = col_offset * renderer->font_width,
+				.left = (start + col_offset) * renderer->font_width,
 				.top = row * renderer->font_height,
-				.right = col_offset * renderer->font_width + renderer->font_width * (i - col_offset),
+				.right = (start + col_offset) * renderer->font_width + renderer->font_width * (i - col_offset),
 				.bottom = (row * renderer->font_height) + renderer->font_height
 			};
 			DrawBackgroundRect(renderer, bg_rect, &renderer->hl_attribs[hl_attrib_id]);
@@ -392,16 +424,15 @@ void DrawGridLine(Renderer *renderer, int row) {
 			col_offset = i;
 		}
 	}
-
+	
 	// Draw the remaining columns, there is always atleast the last column to draw,
 	// but potentially more in case the last X columns share the same hl_attrib
-	rect.left = col_offset * renderer->font_width;
+	rect.left = (start + col_offset) * renderer->font_width;
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
-	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
+	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, end);
 
-	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
+	text_layout->Draw(renderer, renderer->glyph_renderer, start * renderer->font_width, rect.top);
 	text_layout->Release();
-	ReleaseAllDrawingEffects(renderer);
 }
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
@@ -415,9 +446,11 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 		int row = MPackIntFromArray(grid_line, 1);
 		int col_start = MPackIntFromArray(grid_line, 2);
 
+
 		mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
 		size_t cells_array_length = mpack_node_array_length(cells_array);
 
+		int col_offset = col_start;
 		int hl_attrib_id = 0;
 		for (size_t j = 0; j < cells_array_length; ++j) {
 			mpack_node_t cells = mpack_node_array_at(cells_array, j);
@@ -431,10 +464,10 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			// skip the conversion, since DirectWrite ignores embedded
 			// null bytes, we can simply insert one and go to the next column
 			if (strlen == 0) {
-				int offset = row * renderer->grid_cols + col_start;
+				int offset = row * renderer->grid_cols + col_offset;
 				renderer->grid_chars[offset] = L'\0';
 				renderer->grid_hl_attrib_ids[offset] = hl_attrib_id;
-				col_start += 1;
+				col_offset += 1;
 				continue;
 			}
 
@@ -447,24 +480,21 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				repeat = MPackIntFromArray(cells, 2);
 			}
 
+			// TODO: Redundant'ish call
 			int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, nullptr, 0);
 			int wstrlen_with_repetitions = wstrlen * repeat;
 
-			int offset = row * renderer->grid_cols + col_start;
+			int offset = row * renderer->grid_cols + col_offset;
 			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
 			for (int k = 0; k < repeat; ++k) {
 				int idx = offset + (k * wstrlen);
 				MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], (renderer->grid_cols * renderer->grid_rows) - idx);
 			}
 
-			col_start += wstrlen_with_repetitions;
+			col_offset += wstrlen_with_repetitions;
 		}
-	}
 
-	for (size_t i = 1; i < line_count; ++i) {
-		mpack_node_t grid_line = mpack_node_array_at(grid_lines, i);
-		int row = MPackIntFromArray(grid_line, 1);
-		DrawGridLine(renderer, row);
+		DrawGridLine(renderer, row, col_start, col_offset);
 	}
 }
 
@@ -490,7 +520,6 @@ void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
 	mpack_node_t cursor_goto_params = mpack_node_array_at(cursor_goto, 1);
 	renderer->cursor.row = MPackIntFromArray(cursor_goto_params, 1);
 	renderer->cursor.col = MPackIntFromArray(cursor_goto_params, 2);
-	renderer->cursor.grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
 }
 
 void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
@@ -599,9 +628,58 @@ void DrawBorderRectangles(Renderer *renderer) {
 	DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
 }
 
+void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
+	uint64_t option_set_length = mpack_node_array_length(option_set);
+
+	for (uint64_t i = 1; i < option_set_length; ++i) {
+		mpack_node_t name = mpack_node_array_at(mpack_node_array_at(option_set, i), 0);
+		mpack_node_t value = mpack_node_array_at(mpack_node_array_at(option_set, i), 1);
+		if (MPackMatchString(name, "guifont")) {
+			size_t strlen = mpack_node_strlen(value);
+			if (strlen == 0) {
+				continue;
+			}
+
+			const char *font_str = mpack_node_str(value);
+			const char *size_str = strstr(font_str, ":h");
+			if (!size_str) {
+				continue;
+			}
+
+			size_t font_str_len = size_str - font_str;
+			size_t size_str_len = strlen - (font_str_len + 2);
+			size_str += 2;
+			
+			assert(size_str_len < 64);
+			char font_size[64];
+			strncpy(font_size, size_str, size_str_len);
+			font_size[size_str_len] = '\0';
+
+			RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), font_str, static_cast<int>(font_str_len));
+			// Send message to window in order to update nvim row/col count
+			PostMessage(renderer->hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
+		}
+	}
+}
+
+void ClearGrid(Renderer *renderer) {
+	D2D1_RECT_F rect {
+		.left = 0.0f,
+		.top = 0.0f,
+		.right = renderer->grid_cols * renderer->font_width,
+		.bottom = renderer->grid_rows * renderer->font_height
+	};
+	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
+}
+
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
-	renderer->render_target->BeginDraw();
-	renderer->render_target->SetTransform(D2D1::IdentityMatrix());
+	if (!renderer->draw_active) {
+		renderer->render_target->BeginDraw();
+		renderer->render_target->SetTransform(D2D1::IdentityMatrix());
+		renderer->draw_active = true;
+	}
+
+	//mpack_node_print_to_stdout(params);
 
 	bool force_redraw = false;
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
@@ -609,9 +687,14 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		mpack_node_t redraw_command_arr = mpack_node_array_at(params, i);
 		mpack_node_t redraw_command_name = mpack_node_array_at(redraw_command_arr, 0);
 
+		if (MPackMatchString(redraw_command_name, "option_set")) {
+			SetGuiOptions(renderer, redraw_command_arr);
+		}
 		if (MPackMatchString(redraw_command_name, "grid_resize")) {
 			UpdateGridSize(renderer, redraw_command_arr);
-			force_redraw = true;
+		}
+		if (MPackMatchString(redraw_command_name, "grid_clear")) {
+			ClearGrid(renderer);
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
@@ -637,17 +720,19 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 			force_redraw = true;
 		}
-	}
+		else if (MPackMatchString(redraw_command_name, "flush")) {
+			if (force_redraw) {
+				for (int row = 0; row < renderer->grid_rows; ++row) {
+					DrawGridLine(renderer, row, 0, renderer->grid_cols);
+				}
+			}
 
-	if (force_redraw) {
-		for (int row = 0; row < renderer->grid_rows; ++row) {
-			DrawGridLine(renderer, row);
+			DrawCursor(renderer);
+			DrawBorderRectangles(renderer);
+			renderer->render_target->EndDraw();
+			renderer->draw_active = false;
 		}
 	}
-	DrawCursor(renderer);
-	DrawBorderRectangles(renderer);
-
-	renderer->render_target->EndDraw();
 }
 
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos) {

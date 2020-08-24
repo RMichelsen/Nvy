@@ -2,6 +2,7 @@
 
 constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFF;
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
+constexpr int MAX_FONT_LENGTH = 128;
 constexpr uint32_t DEFAULT_COLOR = 0x46464646;
 enum HighlightAttributeFlags : uint16_t {
 	HL_ATTRIB_REVERSE			= 1 << 0,
@@ -37,12 +38,14 @@ struct Cursor {
 	CursorModeInfo *mode_info;
 	int row;
 	int col;
-	int grid_offset;
 };
 
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
+	HWND hwnd;
+	bool draw_active;
+
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
 	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
 	Cursor cursor;
@@ -54,7 +57,7 @@ struct Renderer {
 	GlyphRenderer *glyph_renderer;
 
 	float dpi_scale;
-	const wchar_t *font;
+	wchar_t font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
 	float font_size;
 	float font_height;
@@ -65,14 +68,12 @@ struct Renderer {
 	int grid_cols;
 	wchar_t *grid_chars;
 	uint8_t *grid_hl_attrib_ids;
-
-	std::vector<GlyphDrawingEffect *> color_drawing_effects;
 };
 
-void RendererInitialize(Renderer *renderer, HWND hwnd, const wchar_t *font, float font_size);
+void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size);
 void RendererShutdown(Renderer *renderer);
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
-void RendererUpdateFont(Renderer *renderer, const wchar_t *font, float font_size_delta);
+void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
 CursorPos RendererTranslateMousePosToGrid(Renderer *renderer, POINTS mouse_pos);
