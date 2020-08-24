@@ -40,12 +40,14 @@ struct Cursor {
 	int col;
 };
 
+struct CellProperty {
+	uint8_t hl_attrib_id;
+	bool is_wide_char;
+};
+
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
-	HWND hwnd;
-	bool draw_active;
-
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
 	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
 	Cursor cursor;
@@ -69,7 +71,10 @@ struct Renderer {
 	int grid_rows;
 	int grid_cols;
 	wchar_t *grid_chars;
-	uint8_t *grid_hl_attrib_ids;
+	CellProperty *grid_cell_properties;
+
+	HWND hwnd;
+	bool draw_active;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size);

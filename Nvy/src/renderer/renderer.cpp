@@ -45,20 +45,20 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float f
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&renderer->write_factory)));
 
 	renderer->glyph_renderer = new GlyphRenderer;
-
 	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
 }
 
 void RendererShutdown(Renderer *renderer) {
 	delete renderer->glyph_renderer;
 
+	renderer->scroll_region_bitmap->Release();
 	renderer->d2d_factory->Release();
 	renderer->render_target->Release();
 	renderer->write_factory->Release();
 	renderer->text_format->Release();
 
 	free(renderer->grid_chars);
-	free(renderer->grid_hl_attrib_ids);
+	free(renderer->grid_cell_properties);
 }
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height) {
@@ -326,17 +326,17 @@ void DrawSingleCharacter(Renderer *renderer, D2D1_RECT_F rect, wchar_t character
 
 void EraseCursor(Renderer *renderer) {
 	int cursor_grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
+	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
 
-	// If the cursor is outside the bounds of the client,
-	// skip erase
-	if (cursor_grid_offset > renderer->grid_rows * renderer->grid_cols) {
+	// If the cursor is outside the bounds of the client, skip erase
+	if (cursor_grid_offset > renderer->grid_rows * renderer->grid_cols ||
+		renderer->grid_chars[cursor_grid_offset] == L'\0') {
 		return;
 	}
 
-	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
 	int double_width_char_factor = 1;
 	if (cursor_grid_offset < (renderer->grid_rows *renderer->grid_cols) &&
-		renderer->grid_chars[cursor_grid_offset + 1] == L'\0') {
+		renderer->grid_cell_properties[cursor_grid_offset].is_wide_char) {
 		double_width_char_factor += 1;
 	}
 
@@ -347,7 +347,7 @@ void EraseCursor(Renderer *renderer) {
 		.bottom = (renderer->cursor.row * renderer->line_spacing) + renderer->line_spacing
 	};
 
-	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[cursor_grid_offset]];
+	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_cell_properties[cursor_grid_offset].hl_attrib_id];
 	DrawBackgroundRect(renderer, cursor_rect, hl_attribs);
 	DrawSingleCharacter(renderer, cursor_rect, character_under_cursor, hl_attribs);
 }
@@ -358,7 +358,7 @@ void DrawCursor(Renderer *renderer) {
 	wchar_t character_under_cursor = renderer->grid_chars[cursor_grid_offset];
 	int double_width_char_factor = 1;
 	if (cursor_grid_offset < (renderer->grid_rows *renderer->grid_cols) && 
-		renderer->grid_chars[cursor_grid_offset + 1] == L'\0') {
+		renderer->grid_cell_properties[cursor_grid_offset].is_wide_char) {
 		double_width_char_factor += 1;
 	}
 		
@@ -390,10 +390,6 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 		.right = end * renderer->font_width,
 		.bottom = (row * renderer->line_spacing) + renderer->line_spacing
 	};
-	if (renderer->grid_chars[base] == L'\0') {
-		DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
-		return;
-	}
 
 	IDWriteTextLayout *temp_text_layout = nullptr;
 	WIN_CHECK(renderer->write_factory->CreateTextLayout(
@@ -408,7 +404,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	temp_text_layout->QueryInterface<IDWriteTextLayout1>(&text_layout);
 	temp_text_layout->Release();
 
-	uint8_t hl_attrib_id = renderer->grid_hl_attrib_ids[base];
+	uint8_t hl_attrib_id = renderer->grid_cell_properties[base].hl_attrib_id;
 	int col_offset = 0;
 	for (int i = 0; i < (end - start); ++i) {
 		float char_width = renderer->font_width;
@@ -423,7 +419,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 
 		// Check if the attributes change, 
 		// if so draw until this point and continue with the new attributes
-		if (renderer->grid_hl_attrib_ids[base + i] != hl_attrib_id) {
+		if (renderer->grid_cell_properties[base + i].hl_attrib_id != hl_attrib_id) {
 			D2D1_RECT_F bg_rect {
 				.left = (start + col_offset) * renderer->font_width,
 				.top = row * renderer->line_spacing,
@@ -433,7 +429,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 			DrawBackgroundRect(renderer, bg_rect, &renderer->hl_attribs[hl_attrib_id]);
 			ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, i);
 
-			hl_attrib_id = renderer->grid_hl_attrib_ids[base + i];
+			hl_attrib_id = renderer->grid_cell_properties[base + i].hl_attrib_id;
 			col_offset = i;
 		}
 	}
@@ -450,7 +446,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 	assert(renderer->grid_chars != nullptr);
-	assert(renderer->grid_hl_attrib_ids != nullptr);
+	assert(renderer->grid_cell_properties != nullptr);
 
 	size_t line_count = mpack_node_array_length(grid_lines);
 	for (size_t i = 1; i < line_count; ++i) {
@@ -478,8 +474,11 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			// null bytes, we can simply insert one and go to the next column
 			if (strlen == 0) {
 				int offset = row * renderer->grid_cols + col_offset;
+				renderer->grid_cell_properties[offset - 1].is_wide_char = true;
+
 				renderer->grid_chars[offset] = L'\0';
-				renderer->grid_hl_attrib_ids[offset] = hl_attrib_id;
+				renderer->grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
+				renderer->grid_cell_properties[offset].is_wide_char = true;
 				col_offset += 1;
 				continue;
 			}
@@ -501,7 +500,10 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			}
 
 			int wstrlen_with_repetitions = wstrlen * repeat;
-			memset(&renderer->grid_hl_attrib_ids[offset], hl_attrib_id, wstrlen_with_repetitions);
+			for (int k = 0; k < wstrlen_with_repetitions; ++k) {
+				renderer->grid_cell_properties[offset + k].hl_attrib_id = hl_attrib_id;
+			}
+
 			col_offset += wstrlen_with_repetitions;
 		}
 
@@ -515,7 +517,7 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 	int grid_rows = MPackIntFromArray(grid_resize_params, 2);
 
 	if (renderer->grid_chars == nullptr ||
-		renderer->grid_hl_attrib_ids == nullptr ||
+		renderer->grid_cell_properties == nullptr ||
 		renderer->grid_cols != grid_cols ||
 		renderer->grid_rows != grid_rows) {
 		
@@ -523,7 +525,7 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 		renderer->grid_rows = grid_rows;
 
 		renderer->grid_chars = static_cast<wchar_t *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(wchar_t)));
-		renderer->grid_hl_attrib_ids = static_cast<uint8_t *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(uint8_t)));
+		renderer->grid_cell_properties = static_cast<CellProperty *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(CellProperty)));
 	}
 }
 
@@ -611,9 +613,9 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 		);
 
 		memcpy(
-			&renderer->grid_hl_attrib_ids[target_row * renderer->grid_cols + left],
-			&renderer->grid_hl_attrib_ids[i * renderer->grid_cols + left],
-			right - left
+			&renderer->grid_cell_properties[target_row * renderer->grid_cols + left],
+			&renderer->grid_cell_properties[i * renderer->grid_cols + left],
+			(right - left) * sizeof(CellProperty)
 		);
 	}
 
@@ -754,7 +756,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
-			force_redraw = true;
+			ClearGrid(renderer);
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
@@ -774,15 +776,8 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
-			//force_redraw = true;
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
-			if (force_redraw) {
-				for (int row = 0; row < renderer->grid_rows; ++row) {
-					DrawGridLine(renderer, row, 0, renderer->grid_cols);
-				}
-			}
-
 			DrawCursor(renderer);
 			DrawBorderRectangles(renderer);
 			renderer->render_target->EndDraw();

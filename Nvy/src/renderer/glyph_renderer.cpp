@@ -74,7 +74,7 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 	int row = static_cast<int>(baseline_origin_y / renderer->font_height);
 	int col = static_cast<int>(baseline_origin_x / renderer->font_width);
 	int index = row * renderer->grid_cols + col;
-	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_hl_attrib_ids[index]];
+	HighlightAttributes *hl_attribs = &renderer->hl_attribs[renderer->grid_cell_properties[index].hl_attrib_id];
 	uint32_t color = hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
 	ID2D1SolidColorBrush *brush;
 	hr = renderer->render_target->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
