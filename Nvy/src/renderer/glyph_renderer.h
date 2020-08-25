@@ -25,7 +25,8 @@ struct DECLSPEC_UUID("8d4d2884-e4d9-11ea-87d0-0242ac130003") GlyphDrawingEffect 
 
 struct Renderer;
 struct GlyphRenderer : public IDWriteTextRenderer {
-	GlyphRenderer();
+	GlyphRenderer(Renderer *renderer);
+	~GlyphRenderer();
 
 	HRESULT DrawGlyphRun(void *client_drawing_context, float baseline_origin_x, float baseline_origin_y,
 		DWRITE_MEASURING_MODE measuring_mode, DWRITE_GLYPH_RUN const *glyph_run, 
@@ -49,4 +50,7 @@ struct GlyphRenderer : public IDWriteTextRenderer {
 	HRESULT QueryInterface(REFIID riid, void **ppv_object) override;
 
 	ULONG ref_count;
+	ID2D1SolidColorBrush *drawing_effect_brush;
+	ID2D1SolidColorBrush *temp_brush;
+
 };

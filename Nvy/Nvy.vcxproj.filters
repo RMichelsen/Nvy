@@ -56,6 +56,9 @@
     <ClInclude Include="src\common\vec.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\dx_helper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="third_party\mpack\LICENSE.txt" />

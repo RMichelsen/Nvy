@@ -15,6 +15,8 @@
 
 #include "mpack/mpack.h"
 
+#include "common/dx_helper.h"
+#include "common/mpack_helper.h"
 #include "common/vec.h"
 
 // WPARAM: mpack_tree_t *, LPARAM: none

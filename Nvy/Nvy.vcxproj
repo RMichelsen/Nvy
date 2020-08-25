@@ -177,6 +177,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\common\dx_helper.h" />
     <ClInclude Include="src\common\mpack_helper.h" />
     <ClInclude Include="src\common\vec.h" />
     <ClInclude Include="src\nvim\nvim.h" />

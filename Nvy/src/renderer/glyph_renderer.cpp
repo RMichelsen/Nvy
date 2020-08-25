@@ -19,7 +19,15 @@ HRESULT GlyphDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) {
 	return S_OK;
 }
 
-GlyphRenderer::GlyphRenderer() : ref_count(0) {}
+GlyphRenderer::GlyphRenderer(Renderer *renderer) : ref_count(0) {
+	WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &drawing_effect_brush));
+	WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &temp_brush));
+}
+
+GlyphRenderer::~GlyphRenderer() {
+	SafeRelease(&drawing_effect_brush);
+	SafeRelease(&temp_brush);
+}
 
 HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline_origin_x, 
 	float baseline_origin_y, DWRITE_MEASURING_MODE measuring_mode, DWRITE_GLYPH_RUN const *glyph_run, 
@@ -28,30 +36,119 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
 	
-	uint32_t color;
 	if (client_drawing_effect)
 	{
 		GlyphDrawingEffect *drawing_effect;
 		client_drawing_effect->QueryInterface(__uuidof(GlyphDrawingEffect), reinterpret_cast<void **>(&drawing_effect));
-		color = drawing_effect->color;
-		drawing_effect->Release();
+		drawing_effect_brush->SetColor(D2D1::ColorF(drawing_effect->color));
+		SafeRelease(&drawing_effect);
 	}
 	else {
-		color = renderer->hl_attribs[0].foreground;
+		drawing_effect_brush->SetColor(D2D1::ColorF(renderer->hl_attribs[0].foreground));
 	}
-	ID2D1SolidColorBrush *brush;
-	hr = renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(color), &brush);
 
-	if (SUCCEEDED(hr)) {
+	DWRITE_GLYPH_IMAGE_FORMATS supported_formats =
+		DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE |
+		DWRITE_GLYPH_IMAGE_FORMATS_CFF |
+		DWRITE_GLYPH_IMAGE_FORMATS_COLR |
+		DWRITE_GLYPH_IMAGE_FORMATS_SVG |
+		DWRITE_GLYPH_IMAGE_FORMATS_PNG |
+		DWRITE_GLYPH_IMAGE_FORMATS_JPEG |
+		DWRITE_GLYPH_IMAGE_FORMATS_TIFF |
+		DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8;
+
+	IDWriteColorGlyphRunEnumerator1 *glyph_run_enumerator;
+	hr = renderer->dwrite_factory->TranslateColorGlyphRun(
+		D2D1_POINT_2F { .x = baseline_origin_x, .y = baseline_origin_y },
+		glyph_run,
+		glyph_run_description,
+		supported_formats,
+		measuring_mode,
+		nullptr,
+		0,
+		&glyph_run_enumerator
+	);
+
+	if (hr == DWRITE_E_NOCOLOR) {
 		renderer->d2d_context->DrawGlyphRun(
 			D2D1_POINT_2F { .x = baseline_origin_x, .y = baseline_origin_y },
 			glyph_run,
-			brush,
+			drawing_effect_brush,
 			measuring_mode
 		);
 	}
+	else {
+		assert(!FAILED(hr));
 
-	brush->Release();
+		while (true) {
+			BOOL has_run;
+			WIN_CHECK(glyph_run_enumerator->MoveNext(&has_run));
+			if (!has_run) {
+				break;
+			}
+
+			DWRITE_COLOR_GLYPH_RUN1 const *color_run;
+			WIN_CHECK(glyph_run_enumerator->GetCurrentRun(&color_run));
+
+			D2D1_POINT_2F current_baseline_origin {
+				.x = color_run->baselineOriginX,
+				.y = color_run->baselineOriginY
+			};
+
+			switch (color_run->glyphImageFormat) {
+			case DWRITE_GLYPH_IMAGE_FORMATS_PNG:
+			case DWRITE_GLYPH_IMAGE_FORMATS_JPEG:
+			case DWRITE_GLYPH_IMAGE_FORMATS_TIFF:
+			case DWRITE_GLYPH_IMAGE_FORMATS_PREMULTIPLIED_B8G8R8A8: {
+				renderer->d2d_context->DrawColorBitmapGlyphRun(
+					color_run->glyphImageFormat,
+					current_baseline_origin,
+					&color_run->glyphRun,
+					measuring_mode
+				);
+			} break;
+			case DWRITE_GLYPH_IMAGE_FORMATS_SVG: {
+				renderer->d2d_context->DrawSvgGlyphRun(
+					current_baseline_origin,
+					&color_run->glyphRun,
+					drawing_effect_brush,
+					nullptr,
+					0,
+					measuring_mode
+				);
+			} break;
+			case DWRITE_GLYPH_IMAGE_FORMATS_TRUETYPE:
+			case DWRITE_GLYPH_IMAGE_FORMATS_CFF:
+			case DWRITE_GLYPH_IMAGE_FORMATS_COLR:
+			default: {
+				bool use_palette_color = color_run->paletteIndex != 0xFFFF;
+				if (use_palette_color) {
+					temp_brush->SetColor(color_run->runColor);
+				}
+				
+				renderer->d2d_context->PushAxisAlignedClip(
+					D2D1_RECT_F {
+						.left = current_baseline_origin.x,
+						.top = current_baseline_origin.y - renderer->font_ascent,
+						.right = current_baseline_origin.x + (color_run->glyphRun.glyphCount * 2 * renderer->font_width),
+						.bottom = current_baseline_origin.y - renderer->font_ascent + renderer->line_spacing,
+					},
+					D2D1_ANTIALIAS_MODE_ALIASED
+				);
+				renderer->d2d_context->DrawGlyphRun(
+					current_baseline_origin,
+					&color_run->glyphRun,
+					color_run->glyphRunDescription,
+					use_palette_color ? temp_brush : drawing_effect_brush,
+					measuring_mode
+				);
+				renderer->d2d_context->PopAxisAlignedClip();
+
+			} break;
+			}
+		}
+	}
+
 	return hr;
 }
 

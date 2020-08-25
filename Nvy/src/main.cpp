@@ -7,9 +7,10 @@ struct Context {
 	Nvim *nvim;
 	Renderer *renderer;
 	WINDOWPLACEMENT saved_window_placement;
-	GridPoint cached_cursor_pos;
+	GridPoint cached_cursor_grid_pos;
 };
 
+#include <chrono>
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
@@ -105,52 +106,63 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 	} return 0;
 	case WM_MOUSEMOVE: {
-		GridPoint cursor_pos = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		if (context->cached_cursor_pos.col != cursor_pos.col || context->cached_cursor_pos.row != cursor_pos.row) {
+		POINTS cursor_pos = MAKEPOINTS(lparam);
+		GridPoint grid_pos = RendererCursorToGridPoint(context->renderer, cursor_pos.x, cursor_pos.y);
+		if (context->cached_cursor_grid_pos.col != grid_pos.col || context->cached_cursor_grid_pos.row != grid_pos.row) {
 			switch (wparam) {
 			case MK_LBUTTON: {
-				NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+				NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Drag, grid_pos.row, grid_pos.col);
 			} break;
 			case MK_MBUTTON: {
-				NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+				NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Drag, grid_pos.row, grid_pos.col);
 			} break;
 			case MK_RBUTTON: {
-				NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Drag, cursor_pos.row, cursor_pos.col);
+				NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Drag, grid_pos.row, grid_pos.col);
 			} break;
 			}
-			context->cached_cursor_pos = cursor_pos;
+			context->cached_cursor_grid_pos = grid_pos;
 		}
 	} return 0;
-	case WM_LBUTTONDOWN: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Press, row, col);
-	} return 0;
-	case WM_RBUTTONDOWN: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Press, row, col);
-	} return 0;
-	case WM_MBUTTONDOWN: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Press, row, col);
-	} return 0;
-	case WM_LBUTTONUP: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Release, row, col);
-	} return 0;
-	case WM_RBUTTONUP: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Release, row, col);
-	} return 0;
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
 	case WM_MBUTTONUP: {
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
-		NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Release, row, col);
+		POINTS cursor_pos = MAKEPOINTS(lparam);
+		auto [row, col] = RendererCursorToGridPoint(context->renderer, cursor_pos.x, cursor_pos.y);
+		if (msg == WM_LBUTTONDOWN) {
+			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Press, row, col);
+		}
+		else if (msg == WM_MBUTTONDOWN) {
+			NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Press, row, col);
+		}
+		else if (msg == WM_RBUTTONDOWN) {
+			NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Press, row, col);
+		}
+		else if (msg == WM_LBUTTONUP) {
+			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Release, row, col);
+		}
+		else if (msg == WM_MBUTTONUP) {
+			NvimSendMouseInput(context->nvim, MouseButton::Middle, MouseAction::Release, row, col);
+		}
+		else if (msg == WM_RBUTTONUP) {
+			NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Release, row, col);
+		}
 	} return 0;
 	case WM_MOUSEWHEEL: {
 		bool should_resize_font = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 
+		POINTS screen_point = MAKEPOINTS(lparam);
+		POINT client_point {
+			.x = static_cast<LONG>(screen_point.x),
+			.y = static_cast<LONG>(screen_point.y),
+		};
+		ScreenToClient(hwnd, &client_point);
+
 		short wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
 		short scroll_amount = wheel_distance / WHEEL_DELTA;
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, MAKEPOINTS(lparam));
+		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
 		MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp : MouseAction::MouseWheelDown;
 
 		if (should_resize_font) {

@@ -68,6 +68,7 @@ struct Renderer {
 	ID2D1Device4 *d2d_device;
 	ID2D1DeviceContext4 *d2d_context;
 	ID2D1Bitmap1 *d2d_target_bitmap;
+	ID2D1SolidColorBrush *d2d_background_rect_brush;
 
 	IDWriteFactory4 *dwrite_factory;
 	IDWriteTextFormat *dwrite_text_format;
@@ -83,6 +84,7 @@ struct Renderer {
 	float font_size;
 	float font_height;
 	float font_width;
+	float font_ascent;
 	float line_spacing;
 
 	D2D1_SIZE_U pixel_size;
@@ -104,4 +106,4 @@ void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_st
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
 
 GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height);
-GridPoint RendererCursorToGridPoint(Renderer *renderer, POINTS cursor_pos);
+GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y);
