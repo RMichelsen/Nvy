@@ -71,6 +71,7 @@ void InitializeDWrite(Renderer *renderer) {
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory4), reinterpret_cast<IUnknown **>(&renderer->dwrite_factory)));
 }
 
+void HandleDeviceLost(Renderer *renderer);
 void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint32_t height) {
 	renderer->pixel_size.width = width;
 	renderer->pixel_size.height = height;
@@ -84,15 +85,17 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 		renderer->d2d_target_bitmap->Release();
 		//renderer->d2d_scroll_bitmap->Release();
 
-		WIN_CHECK(renderer->dxgi_swapchain->ResizeBuffers(
+		HRESULT hr =renderer->dxgi_swapchain->ResizeBuffers(
 			2,
 			width,
 			height,
 			DXGI_FORMAT_B8G8R8A8_UNORM,
 			0
-		));
+		);
 
-		// TODO: Handle device lost
+		if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+			HandleDeviceLost(renderer);
+		}
 	}
 	else {
 		DXGI_SWAP_CHAIN_DESC1 swapchain_desc {
@@ -145,6 +148,30 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 	renderer->initial_draw = true;
 
 	SafeRelease(&dxgi_backbuffer);
+}
+
+void HandleDeviceLost(Renderer *renderer) {
+	SafeRelease(&renderer->d3d_device);
+	SafeRelease(&renderer->d3d_context);
+	SafeRelease(&renderer->dxgi_swapchain);
+	SafeRelease(&renderer->d2d_factory);
+	SafeRelease(&renderer->d2d_device);
+	SafeRelease(&renderer->d2d_context);
+	SafeRelease(&renderer->d2d_target_bitmap);
+	SafeRelease(&renderer->dwrite_factory);
+	SafeRelease(&renderer->dwrite_text_format);
+	SafeRelease(&renderer->glyph_renderer);
+
+	InitializeD2D(renderer);
+	InitializeD3D(renderer);
+	InitializeDWrite(renderer);
+	RECT client_rect;
+	GetClientRect(renderer->hwnd, &client_rect);
+	InitializeWindowDependentResources(
+		renderer,
+		static_cast<uint32_t>(client_rect.right - client_rect.left),
+		static_cast<uint32_t>(client_rect.bottom - client_rect.top)
+	);
 }
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size) {
@@ -213,7 +240,7 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
 		nullptr,
-		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_WEIGHT_MEDIUM,
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
 		renderer->font_size,
@@ -282,7 +309,7 @@ void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) 
 }
 
 void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string, int strlen) {
-	if (font_size > 100.0f || font_size < 5) {
+	if (font_size > 150.0f || font_size < 5.0f) {
 		return;
 	}
 
@@ -561,7 +588,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	// but potentially more in case the last X columns share the same hl_attrib
 	D2D1_RECT_F last_rect = rect;
 	last_rect.left = (start + col_offset) * renderer->font_width;
-	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[hl_attrib_id]);
+	DrawBackgroundRect(renderer, last_rect, &renderer->hl_attribs[hl_attrib_id]);
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, end);
 
 	renderer->d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
@@ -864,11 +891,15 @@ void FinishDraw(Renderer *renderer) {
 		present_params.pScrollOffset = &renderer->scroll_offset;
 	}
 
-	renderer->dxgi_swapchain->Present1(0, 0, renderer->initial_draw ? &default_present_params : &present_params);
+	HRESULT hr = renderer->dxgi_swapchain->Present1(0, 0, renderer->initial_draw ? &default_present_params : &present_params);
 	renderer->draw_active = false;
 	renderer->initial_draw = false;
 	renderer->scrolled = false;
 	renderer->dirty_rects.clear();
+
+	if (hr == DXGI_ERROR_DEVICE_REMOVED) {
+		HandleDeviceLost(renderer);
+	}
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {

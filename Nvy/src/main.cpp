@@ -10,7 +10,6 @@ struct Context {
 	GridPoint cached_cursor_pos;
 };
 
-#include <chrono>
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
@@ -30,11 +29,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 	else if (result.type == MPackMessageType::Notification) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
-			auto t1 = std::chrono::high_resolution_clock::now();
 			RendererRedraw(context->renderer, result.params);
-			auto t2 = std::chrono::high_resolution_clock::now();
-			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-			printf("Dur: %llu microseconds\n", duration);
 		}
 	}
 }
@@ -166,7 +161,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				NvimSendResize(context->nvim, rows, cols);
 			}
 		}
-		// TODO: Scroll bug
 		else {
 			for (int i = 0; i < abs(scroll_amount); ++i) {
 				NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, row, col);
