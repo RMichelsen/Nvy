@@ -49,6 +49,7 @@ void InitializeD3D(Renderer *renderer) {
 	WIN_CHECK(renderer->d2d_factory->CreateDevice(dxgi_device, &renderer->d2d_device));
 	WIN_CHECK(renderer->d2d_device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS, &renderer->d2d_context));
 	WIN_CHECK(renderer->d2d_context->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &renderer->d2d_background_rect_brush));
+	renderer->d2d_context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
 
 	SafeRelease(&dxgi_device);
 }
@@ -228,7 +229,7 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
 		nullptr,
-		DWRITE_FONT_WEIGHT_MEDIUM,
+		DWRITE_FONT_WEIGHT_NORMAL,
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
 		renderer->font_size,

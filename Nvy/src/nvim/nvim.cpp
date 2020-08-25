@@ -364,27 +364,12 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 }
 
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col) {
-	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
-
-	std::string modifers;
-	if (shift_down) {
-		modifers += "S-";
-	}
-	if (ctrl_down) {
-		modifers += "C-";
-	}
-	if (alt_down) {
-		modifers += "M-";
-	}
-
-	char data[256];
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, 256);
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 	MPackStartRequest(RegisterRequest(nvim, nvim_input_mouse), NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
-
 	mpack_start_array(&writer, 6);
+
 	switch (button) {
 	case MouseButton::Left: {
 		mpack_write_cstr(&writer, "left");
@@ -422,7 +407,15 @@ void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int 
 		mpack_write_cstr(&writer, "right");
 	} break;
 	}
-	mpack_write_cstr(&writer, modifers.c_str());
+
+	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+	constexpr int MAX_INPUT_STRING_SIZE = 64;
+	char input_string[MAX_INPUT_STRING_SIZE];
+	snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s>", shift_down ? "S-" : "", ctrl_down ? "C-" : "", alt_down ? "M-" : "");
+	mpack_write_cstr(&writer, input_string);
+
 	mpack_write_i64(&writer, 0);
 	mpack_write_i64(&writer, mouse_row);
 	mpack_write_i64(&writer, mouse_col);
