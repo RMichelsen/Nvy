@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(Nvy)
-add_executable(Nvy WIN32 "resources/nvim_icon.rc")
+add_executable(Nvy WIN32 "resources/third_party/nvim_icon.rc")
 
 set(Nvy_HEADERS
     "src/common/dx_helper.h"
