@@ -155,6 +155,8 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float f
 	renderer->hwnd = hwnd;
 	renderer->dpi_scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
 
+    renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
+
 	InitializeD2D(renderer);
 	InitializeD3D(renderer);
 	InitializeDWrite(renderer);
@@ -218,7 +220,7 @@ void UpdateFontSize(Renderer *renderer, float font_size) {
 	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
 		nullptr,
-		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_WEIGHT_MEDIUM,
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
 		renderer->font_size,
@@ -492,7 +494,7 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	temp_text_layout->QueryInterface<IDWriteTextLayout1>(&text_layout);
 	temp_text_layout->Release();
 
-	uint8_t hl_attrib_id = renderer->grid_cell_properties[base].hl_attrib_id;
+	uint16_t hl_attrib_id = renderer->grid_cell_properties[base].hl_attrib_id;
 	int col_offset = 0;
 	for (int i = 0; i < (end - start); ++i) {
 		if (renderer->grid_cell_properties[base + i].is_wide_char) {
@@ -922,6 +924,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_line")) {
+            /* mpack_node_print_to_stdout(redraw_command_arr); */
 			DrawGridLines(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_cursor_goto")) {

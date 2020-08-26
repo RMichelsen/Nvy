@@ -44,18 +44,18 @@ struct Cursor {
 };
 
 struct CellProperty {
-	uint8_t hl_attrib_id;
+	uint16_t hl_attrib_id;
 	bool is_wide_char;
 };
 
-constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFF;
+constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
 	CursorModeInfo cursor_mode_infos[MAX_CURSOR_MODE_INFOS];
-	HighlightAttributes hl_attribs[MAX_HIGHLIGHT_ATTRIBS];
+	Vec<HighlightAttributes> hl_attribs;
 	Cursor cursor;
 
 	GlyphRenderer *glyph_renderer;
