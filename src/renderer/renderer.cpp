@@ -495,8 +495,6 @@ void DrawGridLine(Renderer *renderer, int row, int start, int end) {
 	uint8_t hl_attrib_id = renderer->grid_cell_properties[base].hl_attrib_id;
 	int col_offset = 0;
 	for (int i = 0; i < (end - start); ++i) {
-		bool cursor_next = (row == renderer->cursor.row && i == renderer->cursor.col && renderer->cursor.mode_info);
-
 		if (renderer->grid_cell_properties[base + i].is_wide_char) {
 			float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 2);
 			DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
