@@ -1,6 +1,4 @@
-#include "pch.h"
 #include "glyph_renderer.h"
-
 #include "renderer/renderer.h"
 
 HRESULT GlyphDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) {

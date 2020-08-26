@@ -1,7 +1,4 @@
-#include "pch.h"
 #include "nvim.h"
-
-#include "common/mpack_helper.h"
 
 int64_t RegisterRequest(Nvim *nvim, NvimRequest request) {
 	nvim->msg_id_to_method.push_back(request);
@@ -413,7 +410,7 @@ void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int 
 	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
 	constexpr int MAX_INPUT_STRING_SIZE = 64;
 	char input_string[MAX_INPUT_STRING_SIZE];
-	snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s>", shift_down ? "S-" : "", ctrl_down ? "C-" : "", alt_down ? "M-" : "");
+	snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s", shift_down ? "S-" : "", ctrl_down ? "C-" : "", alt_down ? "M-" : "");
 	mpack_write_cstr(&writer, input_string);
 
 	mpack_write_i64(&writer, 0);
