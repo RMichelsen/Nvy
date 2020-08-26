@@ -1,7 +1,7 @@
 #include "glyph_renderer.h"
 #include "renderer/renderer.h"
 
-HRESULT GlyphDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) {
+HRESULT GlyphDrawingEffect::QueryInterface(REFIID riid, void **ppv_object) noexcept {
 	if (__uuidof(GlyphDrawingEffect) == riid) {
 		*ppv_object = this;
 	}
@@ -29,7 +29,7 @@ GlyphRenderer::~GlyphRenderer() {
 
 HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline_origin_x, 
 	float baseline_origin_y, DWRITE_MEASURING_MODE measuring_mode, DWRITE_GLYPH_RUN const *glyph_run, 
-	DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description, IUnknown *client_drawing_effect) {
+	DWRITE_GLYPH_RUN_DESCRIPTION const *glyph_run_description, IUnknown *client_drawing_effect) noexcept {
 	
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
@@ -151,17 +151,17 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 }
 
 HRESULT GlyphRenderer::DrawInlineObject(void *client_drawing_context, float origin_x, float origin_y, 
-	IDWriteInlineObject *inline_obj, BOOL is_sideways, BOOL is_right_to_left, IUnknown *client_drawing_effect) {
+	IDWriteInlineObject *inline_obj, BOOL is_sideways, BOOL is_right_to_left, IUnknown *client_drawing_effect) noexcept {
 	return E_NOTIMPL;
 }
 
 HRESULT GlyphRenderer::DrawStrikethrough(void *client_drawing_context, float baseline_origin_x, 
-	float baseline_origin_y, DWRITE_STRIKETHROUGH const *strikethrough, IUnknown *client_drawing_effect) {
+	float baseline_origin_y, DWRITE_STRIKETHROUGH const *strikethrough, IUnknown *client_drawing_effect) noexcept {
 	return E_NOTIMPL;
 }
 
 HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baseline_origin_x, 
-	float baseline_origin_y, DWRITE_UNDERLINE const *underline, IUnknown *client_drawing_effect) {
+	float baseline_origin_y, DWRITE_UNDERLINE const *underline, IUnknown *client_drawing_effect) noexcept {
 
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
@@ -305,28 +305,27 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 	return hr;
 }
 
-HRESULT GlyphRenderer::IsPixelSnappingDisabled(void *client_drawing_context, BOOL *is_disabled) {
+HRESULT GlyphRenderer::IsPixelSnappingDisabled(void *client_drawing_context, BOOL *is_disabled) noexcept {
 	*is_disabled = false;
 	return S_OK;
 }
 
-HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context, DWRITE_MATRIX *transform) {
+HRESULT GlyphRenderer::GetCurrentTransform(void *client_drawing_context, DWRITE_MATRIX *transform) noexcept {
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
 	renderer->d2d_context->GetTransform(reinterpret_cast<D2D1_MATRIX_3X2_F *>(transform));
 	return S_OK;
 }
 
-HRESULT GlyphRenderer::GetPixelsPerDip(void *client_drawing_context, float *pixels_per_dip) {
+HRESULT GlyphRenderer::GetPixelsPerDip(void *client_drawing_context, float *pixels_per_dip) noexcept {
 	*pixels_per_dip = 1.0f;
 	return S_OK;
 }
 
-ULONG GlyphRenderer::AddRef() {
+ULONG GlyphRenderer::AddRef() noexcept {
 	return InterlockedIncrement(&ref_count);
 }
 
-ULONG GlyphRenderer::Release()
-{
+ULONG GlyphRenderer::Release() noexcept {
 	ULONG new_count = InterlockedDecrement(&ref_count);
 	if (new_count == 0) {
 		delete this;
@@ -335,7 +334,7 @@ ULONG GlyphRenderer::Release()
 	return new_count;
 }
 
-HRESULT GlyphRenderer::QueryInterface(REFIID riid, void **ppv_object) {
+HRESULT GlyphRenderer::QueryInterface(REFIID riid, void **ppv_object) noexcept {
 	if (__uuidof(IDWriteTextRenderer) == riid) {
 		*ppv_object = this;
 	}

@@ -268,9 +268,10 @@ void UpdateFontMetrics(Renderer *renderer, const char* font_string, int strlen) 
 	BOOL exists;
 	font_collection->FindFamilyName(renderer->font, &index, &exists);
 
-	// Fallback font
+    const wchar_t *fallback_font = L"Consolas";
 	if (!exists) {
-		font_collection->FindFamilyName(L"Consolas", &index, &exists);
+		font_collection->FindFamilyName(fallback_font, &index, &exists);
+        memcpy(renderer->font, fallback_font, (wcslen(fallback_font) + 1) * sizeof(wchar_t));
 	}
 
 	IDWriteFontFamily *font_family;
@@ -844,7 +845,7 @@ void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
 			
 			assert(size_str_len < 64);
 			char font_size[64];
-			strncpy(font_size, size_str, size_str_len);
+			memcpy(font_size, size_str, size_str_len);
 			font_size[size_str_len] = '\0';
 
 			RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), font_str, static_cast<int>(font_str_len));

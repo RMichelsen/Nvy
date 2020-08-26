@@ -66,4 +66,14 @@ target_compile_definitions(Nvy PUBLIC
     UNICODE
 )
 
-set_source_files_properties("src/third_party/mpack/mpack.c" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties("src/third_party/mpack/mpack.c" PROPERTIES 
+    SKIP_PRECOMPILE_HEADERS ON
+    COMPILE_FLAGS -D_CRT_SECURE_NO_WARNINGS
+)
+
+if(MSVC)
+	string(REGEX REPLACE "/GR" "/GR-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+	string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+else()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
+endif()
