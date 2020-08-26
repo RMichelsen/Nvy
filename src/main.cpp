@@ -23,6 +23,9 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			NvimSendUIAttach(context->nvim, rows, cols);
 		} break;
+        case NvimRequest::nvim_input:
+        case NvimRequest::nvim_input_mouse: {
+        } break;
 		}
 	}
 	else if (result.type == MPackMessageType::Notification) {
@@ -181,18 +184,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void OpenConsole() {
-	FILE *dummy;
-	AllocConsole();
-	freopen_s(&dummy, "CONIN$", "r", stdin);
-	freopen_s(&dummy, "CONOUT$", "w", stdout);
-	freopen_s(&dummy, "CONOUT$", "w", stderr);
+void OpenConsole() {	
+	FILE *dummy;	
+	AllocConsole();	
+	freopen_s(&dummy, "CONIN$", "r", stdin);	
+	freopen_s(&dummy, "CONOUT$", "w", stdout);	
+	freopen_s(&dummy, "CONOUT$", "w", stderr);	
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-    OpenConsole();
 
+    OpenConsole();
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
 

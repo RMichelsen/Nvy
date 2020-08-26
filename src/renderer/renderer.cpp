@@ -660,7 +660,12 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 		renderer->grid_cols = grid_cols;
 		renderer->grid_rows = grid_rows;
 
-		renderer->grid_chars = static_cast<wchar_t *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(wchar_t)));
+		renderer->grid_chars = static_cast<wchar_t *>(malloc(static_cast<size_t>(grid_cols) * grid_rows * sizeof(wchar_t)));
+        // Initialize all grid character to a space. An empty
+        // grid cell is equivalent to a space in a text layout
+		for (int i = 0; i < grid_cols * grid_rows; ++i) {
+			renderer->grid_chars[i] = L' ';
+		}
 		renderer->grid_cell_properties = static_cast<CellProperty *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(CellProperty)));
 	}
 }
