@@ -1,5 +1,9 @@
 #include "nvim.h"
 
+constexpr int Megabytes(int n) {
+    return 1024 * 1024 * n;
+}
+
 int64_t RegisterRequest(Nvim *nvim, NvimRequest request) {
 	nvim->msg_id_to_method.push_back(request);
 	return nvim->next_msg_id++;
@@ -18,7 +22,7 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
 	Nvim *nvim = static_cast<Nvim *>(param);
 	mpack_tree_t *tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
-	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, 1024 * 4096, 4096 * 4);
+	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, Megabytes(20), 1024 * 1024);
 
 	while (true) {
 		mpack_tree_parse(tree);
