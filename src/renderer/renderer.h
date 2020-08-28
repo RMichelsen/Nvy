@@ -34,8 +34,7 @@ struct GridSize {
 
 struct CursorModeInfo {
 	CursorShape shape;
-	float cell_percentage;
-	int hl_attrib_index;
+	uint16_t hl_attrib_id;
 };
 struct Cursor {
 	CursorModeInfo *mode_info;
@@ -51,6 +50,8 @@ struct CellProperty {
 constexpr int MAX_HIGHLIGHT_ATTRIBS = 0xFFFF;
 constexpr int MAX_CURSOR_MODE_INFOS = 64;
 constexpr int MAX_FONT_LENGTH = 128;
+constexpr float DEFAULT_DPI = 96.0f;
+constexpr float POINTS_PER_INCH = 72.0f;
 struct GlyphDrawingEffect;
 struct GlyphRenderer;
 struct Renderer {
@@ -70,6 +71,8 @@ struct Renderer {
 	ID2D1Bitmap1 *d2d_target_bitmap;
 	ID2D1SolidColorBrush *d2d_background_rect_brush;
 
+    IDWriteFontFace1 *font_face;
+
 	IDWriteFactory4 *dwrite_factory;
 	IDWriteTextFormat *dwrite_text_format;
 
@@ -78,14 +81,15 @@ struct Renderer {
 	POINT scroll_offset;
 	bool scrolled;
 
+    float last_requested_font_size;
 	wchar_t font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
 	float dpi_scale;
-	float font_size;
+    float font_size;
 	float font_height;
 	float font_width;
 	float font_ascent;
-	float line_spacing;
+    float font_descent;
 
 	D2D1_SIZE_U pixel_size;
 	int grid_rows;
