@@ -204,9 +204,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.style = CS_HREDRAW | CS_VREDRAW,
 		.lpfnWndProc = WndProc,
 		.hInstance = instance,
+        .hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
 		.hbrBackground = nullptr,
-		.lpszClassName = window_class_name
+		.lpszClassName = window_class_name,
+        .hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
 	};
 
 	if (!RegisterClassEx(&window_class)) {

@@ -77,9 +77,6 @@ struct Renderer {
 	IDWriteTextFormat *dwrite_text_format;
 
 	Vec<RECT> dirty_rects;
-	RECT scrolled_rect;
-	POINT scroll_offset;
-	bool scrolled;
 
     float last_requested_font_size;
 	wchar_t font[MAX_FONT_LENGTH];

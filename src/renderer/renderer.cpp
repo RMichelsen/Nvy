@@ -759,31 +759,14 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 			&renderer->grid_cell_properties[i * renderer->grid_cols + left],
 			(right - left) * sizeof(CellProperty)
 		);
-	}
 
-	renderer->scrolled_rect = RECT {
-		.left = static_cast<LONG>(left * renderer->font_width),
-		.top = static_cast<LONG>(top * renderer->font_height),
-		.right = static_cast<LONG>(right * renderer->font_width),
-		.bottom = static_cast<LONG>(bottom * renderer->font_height)
-	};
-	if (scrolling_down) {
-		renderer->scrolled_rect.bottom = min(
-			renderer->scrolled_rect.bottom,
-			renderer->scrolled_rect.bottom - static_cast<LONG>(rows * renderer->font_height)
-		);
+        // Sadly I have given up on making use of IDXGISwapChain1::Present1
+        // scroll_rects or bitmap copies. The former seems insufficient for
+        // nvim since it can require multiple scrolls per frame, the latter
+        // I can't seem to make work with the FLIP_SEQUENTIAL swapchain model.
+        // Thus we fall back to drawing the appropriate scrolled grid lines
+        DrawGridLine(renderer, target_row);
 	}
-	else {
-		renderer->scrolled_rect.top = max(
-			renderer->scrolled_rect.top,
-			renderer->scrolled_rect.top - static_cast<LONG>(rows * renderer->font_height)
-		);
-	}
-	renderer->scroll_offset = POINT {
-		.x = 0,
-		.y =-static_cast<LONG>(rows * renderer->font_height)
-	};
-	renderer->scrolled = true;
 
     // Redraw the line which the cursor has moved to, as it is no
     // longer guaranteed that the cursor is still there
@@ -882,15 +865,10 @@ void FinishDraw(Renderer *renderer) {
 		.DirtyRectsCount = static_cast<uint32_t>(renderer->dirty_rects.size()),
 		.pDirtyRects = renderer->dirty_rects.data(),
 	};
-	if (renderer->scrolled) {
-		present_params.pScrollRect = &renderer->scrolled_rect;
-		present_params.pScrollOffset = &renderer->scroll_offset;
-	}
 
 	HRESULT hr = renderer->dxgi_swapchain->Present1(0, 0, renderer->initial_draw ? &default_present_params : &present_params);
 	renderer->draw_active = false;
 	renderer->initial_draw = false;
-	renderer->scrolled = false;
 	renderer->dirty_rects.clear();
 
 	if (hr == DXGI_ERROR_DEVICE_REMOVED) {
@@ -899,6 +877,7 @@ void FinishDraw(Renderer *renderer) {
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
+    // mpack_node_print_to_stdout(params);
 	StartDraw(renderer);
 
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
@@ -938,9 +917,9 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
-			DrawCursor(renderer);
-			DrawBorderRectangles(renderer);
-			FinishDraw(renderer);
+            DrawCursor(renderer);
+            DrawBorderRectangles(renderer);
+            FinishDraw(renderer);
 		}
 	}
 }
@@ -957,4 +936,5 @@ GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y) {
 		.row = static_cast<int>(y / renderer->font_height),
 		.col = static_cast<int>(x / renderer->font_width)
 	};
+    int doge = 5;
 }
