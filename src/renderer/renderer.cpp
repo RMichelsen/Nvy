@@ -96,8 +96,6 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 
 		WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(renderer->d3d_device,
 			renderer->hwnd, &swapchain_desc, nullptr, nullptr, &renderer->dxgi_swapchain));
-		WIN_CHECK(dxgi_factory->MakeWindowAssociation(renderer->hwnd, DXGI_MWA_NO_ALT_ENTER));
-		WIN_CHECK(dxgi_device->SetMaximumFrameLatency(1));
 		
 		SafeRelease(&dxgi_device);
 		SafeRelease(&dxgi_adapter);
@@ -120,7 +118,7 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 		&target_bitmap_properties,
 		&renderer->d2d_target_bitmap
 	));
-	renderer->initial_draw = true;
+	renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 
 	SafeRelease(&dxgi_backbuffer);
 }
@@ -413,9 +411,7 @@ void DrawBackgroundRect(Renderer *renderer, D2D1_RECT_F rect, HighlightAttribute
 	uint32_t color = CreateBackgroundColor(renderer, hl_attribs);
 	renderer->d2d_background_rect_brush->SetColor(D2D1::ColorF(color));
 
-	renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 	renderer->d2d_context->FillRectangle(rect, renderer->d2d_background_rect_brush);
-	renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 }
 
 D2D1_RECT_F GetCursorForegroundRect(Renderer *renderer, D2D1_RECT_F cursor_bg_rect) {
@@ -452,28 +448,6 @@ void DrawHighlightedText(Renderer *renderer, D2D1_RECT_F rect, wchar_t *text, ui
 	text_layout->Draw(renderer, renderer->glyph_renderer, rect.left, rect.top);
 	text_layout->Release();
 	renderer->d2d_context->PopAxisAlignedClip();
-}
-
-inline RECT ToConstrainedRect(Renderer *renderer, D2D1_RECT_F *rect) {
-	LONG rect_left = static_cast<LONG>((*rect).left);
-	LONG rect_top = static_cast<LONG>((*rect).top);
-	LONG rect_right = static_cast<LONG>((*rect).right);
-	LONG rect_bottom = static_cast<LONG>((*rect).bottom);
-
-	return RECT {
-		.left = max(0, min(rect_left, static_cast<LONG>(renderer->pixel_size.width))),
-		.top = max(0, min(rect_top, static_cast<LONG>(renderer->pixel_size.height))),
-		.right = max(0, min(rect_right, static_cast<LONG>(renderer->pixel_size.width))),
-		.bottom = max(0, min(rect_bottom, static_cast<LONG>(renderer->pixel_size.height))),
-	};
-}
-
-void AddDirtyRect(Renderer *renderer, D2D1_RECT_F *rect) {
-	RECT constrained_rect = ToConstrainedRect(renderer, rect);
-	if (constrained_rect.left != constrained_rect.right &&
-		constrained_rect.top != constrained_rect.bottom) {
-		renderer->dirty_rects.push_back(constrained_rect);
-	}
 }
 
 void DrawGridLine(Renderer *renderer, int row) {
@@ -536,9 +510,6 @@ void DrawGridLine(Renderer *renderer, int row) {
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
 	renderer->d2d_context->PopAxisAlignedClip();
 	text_layout->Release();
-
-	// Mark line rect dirty for redraw
-	AddDirtyRect(renderer, &rect);
 }
 
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
@@ -650,7 +621,6 @@ void DrawCursor(Renderer *renderer) {
 		DrawHighlightedText(renderer, cursor_fg_rect, &renderer->grid_chars[cursor_grid_offset], 
 			double_width_char_factor, &cursor_hl_attribs);
 	}
-	AddDirtyRect(renderer, &cursor_fg_rect);
 }
 
 void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
@@ -788,7 +758,6 @@ void DrawBorderRectangles(Renderer *renderer) {
             .bottom = static_cast<float>(renderer->pixel_size.height)
         };
         DrawBackgroundRect(renderer, vertical_rect, &renderer->hl_attribs[0]);
-		AddDirtyRect(renderer, &vertical_rect);
     }
 
     if(top_border != static_cast<float>(renderer->pixel_size.height)) {
@@ -799,7 +768,6 @@ void DrawBorderRectangles(Renderer *renderer) {
             .bottom = static_cast<float>(renderer->pixel_size.height)
         };
         DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
-		AddDirtyRect(renderer, &horizontal_rect);
     }
 }
 
@@ -845,7 +813,6 @@ void ClearGrid(Renderer *renderer) {
 		.bottom = renderer->grid_rows * renderer->font_height
 	};
 	DrawBackgroundRect(renderer, rect, &renderer->hl_attribs[0]);
-	AddDirtyRect(renderer, &rect);
 }
 
 void StartDraw(Renderer *renderer) {
@@ -857,19 +824,24 @@ void StartDraw(Renderer *renderer) {
 	}
 }
 
+void CopyFrontToBack(Renderer *renderer) {
+	ID3D11Resource *front;
+	ID3D11Resource *back;
+	WIN_CHECK(renderer->dxgi_swapchain->GetBuffer(0, IID_PPV_ARGS(&back)));
+	WIN_CHECK(renderer->dxgi_swapchain->GetBuffer(1, IID_PPV_ARGS(&front)));
+	renderer->d3d_context->CopyResource(back, front);
+
+	SafeRelease(&front);
+	SafeRelease(&back);
+}
+
 void FinishDraw(Renderer *renderer) {
 	renderer->d2d_context->EndDraw();
 
-	constexpr DXGI_PRESENT_PARAMETERS default_present_params {};
-	DXGI_PRESENT_PARAMETERS present_params {
-		.DirtyRectsCount = static_cast<uint32_t>(renderer->dirty_rects.size()),
-		.pDirtyRects = renderer->dirty_rects.data(),
-	};
-
-	HRESULT hr = renderer->dxgi_swapchain->Present1(0, 0, renderer->initial_draw ? &default_present_params : &present_params);
+	HRESULT hr = renderer->dxgi_swapchain->Present(0, 0);
 	renderer->draw_active = false;
-	renderer->initial_draw = false;
-	renderer->dirty_rects.clear();
+
+	CopyFrontToBack(renderer);
 
 	if (hr == DXGI_ERROR_DEVICE_REMOVED) {
 		HandleDeviceLost(renderer);
@@ -936,5 +908,4 @@ GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y) {
 		.row = static_cast<int>(y / renderer->font_height),
 		.col = static_cast<int>(x / renderer->font_width)
 	};
-    int doge = 5;
 }

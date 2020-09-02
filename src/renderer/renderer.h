@@ -76,8 +76,6 @@ struct Renderer {
 	IDWriteFactory4 *dwrite_factory;
 	IDWriteTextFormat *dwrite_text_format;
 
-	Vec<RECT> dirty_rects;
-
     float last_requested_font_size;
 	wchar_t font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
@@ -96,7 +94,6 @@ struct Renderer {
 
 	HWND hwnd;
 	bool draw_active;
-	bool initial_draw;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size);

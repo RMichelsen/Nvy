@@ -184,10 +184,7 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 		.bottom = baseline_origin_y + underline->offset + underline->thickness
 	};
 
-    renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
     renderer->d2d_context->FillRectangle(rect, temp_brush);
-    renderer->d2d_context->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
 	return hr;
 }
 

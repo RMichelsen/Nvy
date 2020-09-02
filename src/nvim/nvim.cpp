@@ -362,8 +362,6 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
-
-    printf("%s\n", input_string);
 }
 
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col) {
