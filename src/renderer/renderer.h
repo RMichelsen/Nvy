@@ -64,7 +64,8 @@ struct Renderer {
 	D3D_FEATURE_LEVEL d3d_feature_level;
 	ID3D11Device2 *d3d_device;
 	ID3D11DeviceContext2 *d3d_context;
-	IDXGISwapChain1 *dxgi_swapchain;
+	IDXGISwapChain2 *dxgi_swapchain;
+	HANDLE swapchain_wait_handle;
 	ID2D1Factory5 *d2d_factory;
 	ID2D1Device4 *d2d_device;
 	ID2D1DeviceContext4 *d2d_context;

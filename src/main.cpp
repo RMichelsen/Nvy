@@ -79,7 +79,31 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	} return 0;
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
-		NvimSendInput(context->nvim, static_cast<int>(wparam));
+		// Special case for <ALT+ENTER> (fullscreen transition)
+		if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
+			DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+			MONITORINFO mi { .cbSize = sizeof(MONITORINFO) };
+			if (style & WS_OVERLAPPEDWINDOW) {
+				if (GetWindowPlacement(hwnd, &context->saved_window_placement) &&
+					GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
+					SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+					SetWindowPos(hwnd, HWND_TOP,
+						mi.rcMonitor.left, mi.rcMonitor.top,
+						mi.rcMonitor.right - mi.rcMonitor.left,
+						mi.rcMonitor.bottom - mi.rcMonitor.top,
+						SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+				}
+			}
+			else {
+				SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+				SetWindowPlacement(hwnd, &context->saved_window_placement);
+				SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+					SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+			}
+		}
+		else {
+			NvimSendInput(context->nvim, static_cast<int>(wparam));
+		}
 	} return 0;
 	case WM_MOUSEMOVE: {
 		POINTS cursor_pos = MAKEPOINTS(lparam);

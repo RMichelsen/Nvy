@@ -64,7 +64,7 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 			width,
 			height,
 			DXGI_FORMAT_B8G8R8A8_UNORM,
-			0
+			DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
 		);
 
 		if (hr == DXGI_ERROR_DEVICE_REMOVED) {
@@ -84,7 +84,8 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 			.BufferCount = 2,
 			.Scaling = DXGI_SCALING_NONE,
 			.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-			.AlphaMode = DXGI_ALPHA_MODE_IGNORE
+			.AlphaMode = DXGI_ALPHA_MODE_IGNORE,
+			.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
 		};
 
 		IDXGIDevice3 *dxgi_device;
@@ -94,9 +95,17 @@ void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint
 		IDXGIFactory2 *dxgi_factory;
 		WIN_CHECK(dxgi_adapter->GetParent(IID_PPV_ARGS(&dxgi_factory)));
 
+		IDXGISwapChain1 *dxgi_swapchain_temp;
 		WIN_CHECK(dxgi_factory->CreateSwapChainForHwnd(renderer->d3d_device,
-			renderer->hwnd, &swapchain_desc, nullptr, nullptr, &renderer->dxgi_swapchain));
-		
+			renderer->hwnd, &swapchain_desc, nullptr, nullptr, &dxgi_swapchain_temp));
+		WIN_CHECK(dxgi_factory->MakeWindowAssociation(renderer->hwnd, DXGI_MWA_NO_ALT_ENTER));
+		WIN_CHECK(dxgi_swapchain_temp->QueryInterface(__uuidof(IDXGISwapChain2), 
+					reinterpret_cast<void **>(&renderer->dxgi_swapchain)));
+
+		WIN_CHECK(renderer->dxgi_swapchain->SetMaximumFrameLatency(1));
+		renderer->swapchain_wait_handle = renderer->dxgi_swapchain->GetFrameLatencyWaitableObject();
+
+		SafeRelease(&dxgi_swapchain_temp);
 		SafeRelease(&dxgi_device);
 		SafeRelease(&dxgi_adapter);
 		SafeRelease(&dxgi_factory);
@@ -817,6 +826,12 @@ void ClearGrid(Renderer *renderer) {
 
 void StartDraw(Renderer *renderer) {
 	if (!renderer->draw_active) {
+		WaitForSingleObjectEx(
+			renderer->swapchain_wait_handle,
+			1000,
+			true
+		);
+
 		renderer->d2d_context->SetTarget(renderer->d2d_target_bitmap);
 		renderer->d2d_context->BeginDraw();
 		renderer->d2d_context->SetTransform(D2D1::IdentityMatrix());
