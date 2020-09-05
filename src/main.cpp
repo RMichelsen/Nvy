@@ -6,6 +6,7 @@ struct Context {
 	Renderer *renderer;
 	WINDOWPLACEMENT saved_window_placement;
 	GridPoint cached_cursor_grid_pos;
+	bool xbuttons[2];
 };
 
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
@@ -148,6 +149,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 		else if (msg == WM_RBUTTONUP) {
 			NvimSendMouseInput(context->nvim, MouseButton::Right, MouseAction::Release, row, col);
+		}
+	} return 0;
+	case WM_XBUTTONDOWN: {
+		int button = GET_XBUTTON_WPARAM(wparam);
+		if(button == XBUTTON1 && !context->xbuttons[0]) {
+			NvimSendInput(context->nvim, "<C-o>");
+			context->xbuttons[0] = true;
+		}
+		else if(button == XBUTTON2 && !context->xbuttons[1]) {
+			NvimSendInput(context->nvim, "<C-i>");
+			context->xbuttons[1] = true;
+		}
+	} return 0;
+	case WM_XBUTTONUP: {
+		int button = GET_XBUTTON_WPARAM(wparam);
+		if(button == XBUTTON1) {
+			context->xbuttons[0] = false;
+		}
+		else if(button == XBUTTON2) {
+			context->xbuttons[1] = false;
 		}
 	} return 0;
 	case WM_MOUSEWHEEL: {
