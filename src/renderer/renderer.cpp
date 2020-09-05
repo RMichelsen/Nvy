@@ -252,8 +252,6 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 
     IDWriteFontFace *font_face;
     WIN_CHECK(write_font->CreateFontFace(&font_face));
-
-    // IDWriteFontFace1 *font_face_1;
     WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&renderer->font_face));
 
     renderer->font_face->GetMetrics(&renderer->font_metrics);
@@ -296,7 +294,6 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	WIN_CHECK(renderer->dwrite_text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
 	WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
-    // SafeRelease(&font_face_1);
     SafeRelease(&font_face);
 	SafeRelease(&write_font);
 	SafeRelease(&font_family);
@@ -485,10 +482,22 @@ void DrawGridLine(Renderer *renderer, int row) {
 	uint16_t hl_attrib_id = renderer->grid_cell_properties[base].hl_attrib_id;
 	int col_offset = 0;
 	for (int i = 0; i < renderer->grid_cols; ++i) {
+		// Add spacing for wide chars
 		if (renderer->grid_cell_properties[base + i].is_wide_char) {
 			float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 2);
 			DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
 			text_layout->SetCharacterSpacing(0, (renderer->font_width * 2) - char_width, 0, range);
+		}
+
+		// Add spacing for unicode chars. These characters are still single char width, 
+		// but some of them by default will take up a bit more, leading to issues. So we 
+		// realign them here.	
+		if(renderer->grid_chars[base + i] > 0xFF) {
+			float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 1);
+			if(char_width > renderer->font_width) {
+				DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
+				text_layout->SetCharacterSpacing(0, renderer->font_width - char_width, 0, range);
+			}
 		}
 
 		// Check if the attributes change, 
@@ -864,7 +873,6 @@ void FinishDraw(Renderer *renderer) {
 }
 
 void RendererRedraw(Renderer *renderer, mpack_node_t params) {
-    // mpack_node_print_to_stdout(params);
 	StartDraw(renderer);
 
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
