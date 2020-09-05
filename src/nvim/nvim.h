@@ -12,11 +12,11 @@ constexpr const char *NVIM_REQUEST_NAMES[] {
 };
 enum NvimOutboundNotification : uint8_t {
 	nvim_ui_attach = 0,
-	nvim_ui_try_resize_grid = 1
+	nvim_ui_try_resize = 1
 };
 constexpr const char *NVIM_OUTBOUND_NOTIFICATION_NAMES[] {
 	"nvim_ui_attach",
-	"nvim_ui_try_resize_grid"
+	"nvim_ui_try_resize"
 };
 enum class MouseButton {
 	Left,

@@ -160,9 +160,8 @@ void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols) {
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 
-	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_try_resize_grid], &writer);
-	mpack_start_array(&writer, 3);
-	mpack_write_int(&writer, 1);
+	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_try_resize], &writer);
+	mpack_start_array(&writer, 2);
 	mpack_write_int(&writer, grid_cols);
 	mpack_write_int(&writer, grid_rows);
 	mpack_finish_array(&writer);
