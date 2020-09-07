@@ -492,7 +492,7 @@ void DrawGridLine(Renderer *renderer, int row) {
 		// Add spacing for unicode chars. These characters are still single char width, 
 		// but some of them by default will take up a bit more or less, leading to issues. 
 		// So we realign them here.	
-		if(renderer->grid_chars[base + i] > 0xFF) {
+		else if(renderer->grid_chars[base + i] > 0xFF) {
 			float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 1);
 			if(abs(char_width - renderer->font_width) > 0.01f) {
 				DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
