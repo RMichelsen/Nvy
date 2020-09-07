@@ -490,11 +490,11 @@ void DrawGridLine(Renderer *renderer, int row) {
 		}
 
 		// Add spacing for unicode chars. These characters are still single char width, 
-		// but some of them by default will take up a bit more, leading to issues. So we 
-		// realign them here.	
+		// but some of them by default will take up a bit more or less, leading to issues. 
+		// So we realign them here.	
 		if(renderer->grid_chars[base + i] > 0xFF) {
 			float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 1);
-			if(char_width > renderer->font_width) {
+			if(abs(char_width - renderer->font_width) > 0.01f) {
 				DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
 				text_layout->SetCharacterSpacing(0, renderer->font_width - char_width, 0, range);
 			}
@@ -899,7 +899,11 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			DrawGridLines(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "grid_cursor_goto")) {
-            DrawGridLine(renderer, renderer->cursor.row);
+			// If the old cursor position is still within the row bounds,
+			// redraw the line to get rid of the cursor
+			if(renderer->cursor.row < renderer->grid_rows) {
+				DrawGridLine(renderer, renderer->cursor.row);
+			}
 			UpdateCursorPos(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "mode_info_set")) {
@@ -908,11 +912,23 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		else if (MPackMatchString(redraw_command_name, "mode_change")) {
 			UpdateCursorMode(renderer, redraw_command_arr);
 		}
+		else if (MPackMatchString(redraw_command_name, "busy_start")) {
+			renderer->ui_busy = true;
+			// Hide cursor while UI is busy
+			if(renderer->cursor.row < renderer->grid_rows) {
+				DrawGridLine(renderer, renderer->cursor.row);
+			}
+		}
+		else if (MPackMatchString(redraw_command_name, "busy_stop")) {
+			renderer->ui_busy = false;
+		}
 		else if (MPackMatchString(redraw_command_name, "grid_scroll")) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
-            DrawCursor(renderer);
+			if(!renderer->ui_busy) {
+				DrawCursor(renderer);
+			}
             DrawBorderRectangles(renderer);
             FinishDraw(renderer);
 		}

@@ -95,6 +95,7 @@ struct Renderer {
 
 	HWND hwnd;
 	bool draw_active;
+	bool ui_busy;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size);
