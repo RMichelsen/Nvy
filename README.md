@@ -7,6 +7,17 @@ in `init.vim`, for example:
 
 ![](resources/client.png)
 
+# Configuration
+Nvy sets the global vim variable `g:nvy = 1` in case you want to specialize your init.vim while using Nvy.
+
+Nvy can be started with the following flags:
+- `--maximize` to start in fullscreen
+- `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
+
+# Extra Features
+- You can use Alt+Enter to toggle fullscreen
+- You can use Ctrl+Mousewheel to zoom
+
 # Releases
 Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
 
