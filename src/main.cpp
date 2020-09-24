@@ -36,11 +36,33 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 }
 
+void ToggleFullscreen(HWND hwnd, Context *context) {
+	DWORD style = GetWindowLong(hwnd, GWL_STYLE);
+	MONITORINFO mi { .cbSize = sizeof(MONITORINFO) };
+	if (style & WS_OVERLAPPEDWINDOW) {
+		if (GetWindowPlacement(hwnd, &context->saved_window_placement) &&
+			GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
+			SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+			SetWindowPos(hwnd, HWND_TOP,
+				mi.rcMonitor.left, mi.rcMonitor.top,
+				mi.rcMonitor.right - mi.rcMonitor.left,
+				mi.rcMonitor.bottom - mi.rcMonitor.top,
+				SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+		}
+	}
+	else {
+		SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+		SetWindowPlacement(hwnd, &context->saved_window_placement);
+		SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+			SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+	}
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	Context *context = reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-	if (!context) {
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	}
+	// if (!context) {
+	// 	return DefWindowProc(hwnd, msg, wparam, lparam);
+	// }
 	if (msg == WM_CREATE) {
 		LPCREATESTRUCT createStruct = reinterpret_cast<LPCREATESTRUCT>(lparam);
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
@@ -82,25 +104,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_SYSKEYDOWN: {
 		// Special case for <ALT+ENTER> (fullscreen transition)
 		if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
-			DWORD style = GetWindowLong(hwnd, GWL_STYLE);
-			MONITORINFO mi { .cbSize = sizeof(MONITORINFO) };
-			if (style & WS_OVERLAPPEDWINDOW) {
-				if (GetWindowPlacement(hwnd, &context->saved_window_placement) &&
-					GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
-					SetWindowLong(hwnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-					SetWindowPos(hwnd, HWND_TOP,
-						mi.rcMonitor.left, mi.rcMonitor.top,
-						mi.rcMonitor.right - mi.rcMonitor.left,
-						mi.rcMonitor.bottom - mi.rcMonitor.top,
-						SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-				}
-			}
-			else {
-				SetWindowLong(hwnd, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
-				SetWindowPlacement(hwnd, &context->saved_window_placement);
-				SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-					SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-			}
+			ToggleFullscreen(hwnd, context);
 		}
 		else {
 			NvimSendInput(context->nvim, static_cast<int>(wparam));
@@ -205,17 +209,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void OpenConsole() {
-	FILE *dummy;
-	AllocConsole();
-	freopen_s(&dummy, "CONIN$", "r", stdin);
-	freopen_s(&dummy, "CONOUT$", "w", stdout);
-	freopen_s(&dummy, "CONOUT$", "w", stderr);
-}
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-    // OpenConsole();
+
+	int n_args;
+	LPWSTR *cmd_line_args = CommandLineToArgvW(p_cmd_line, &n_args);
+	bool start_maximized = false;
+	int64_t rows = 0;
+	int64_t cols = 0;
+
+	for(int i = 0; i < n_args; ++i) {
+		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
+			start_maximized = true;
+		}
+		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", 11)) {
+			wchar_t *end_ptr;
+			cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
+			rows = wcstol(end_ptr + 1, nullptr, 10);
+		}
+	}
+
+	Renderer renderer {};
+	RendererInitialize(&renderer, "Consolas", 18.0f);
+	Nvim nvim {};
+	NvimInitialize(&nvim);
+	Context context {
+		.nvim = &nvim,
+		.renderer = &renderer,
+		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
+	};
+
+	int initial_width = CW_USEDEFAULT;
+	int initial_height = CW_USEDEFAULT;
+	if(rows != 0 && cols != 0) {
+		D2D1_SIZE_U initial_pixel_size = RendererGridToPixelSize(&renderer, rows, cols);
+		initial_width = static_cast<int>(initial_pixel_size.width);
+		initial_height = static_cast<int>(initial_pixel_size.height);
+		// Adjust size to include title bar
+		RECT adjusted_rect = {0, 0, initial_width, initial_height};
+		AdjustWindowRect(&adjusted_rect, WS_OVERLAPPEDWINDOW, false);
+		initial_width = adjusted_rect.right - adjusted_rect.left;
+		initial_height = adjusted_rect.bottom - adjusted_rect.top;
+	}
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
@@ -242,28 +277,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		CW_USEDEFAULT,
-		CW_USEDEFAULT,
+		initial_width,
+		initial_height,
 		nullptr,
 		nullptr,
 		instance,
-		nullptr
+		&context
 	);
 	if (hwnd == NULL) return 1;
+	RendererAttach(&renderer, hwnd);
+	NvimAttach(&nvim, hwnd);
+	
+	if(start_maximized) {
+		ToggleFullscreen(hwnd, &context);
+	}
 	ShowWindow(hwnd, n_cmd_show);
-
-	Renderer renderer {};
-	RendererInitialize(&renderer, hwnd, "Fira Code", 25.0f);
-
-	Nvim nvim {};
-	NvimInitialize(&nvim, hwnd);
-
-	Context context {
-		.nvim = &nvim,
-		.renderer = &renderer,
-		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
-	};
-	SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&context));
 
 	MSG msg;
 	while (GetMessage(&msg, 0, 0, 0)) {
@@ -275,5 +303,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
+
 	return 0;
 }

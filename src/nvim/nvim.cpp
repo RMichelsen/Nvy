@@ -55,9 +55,7 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param) {
 	return 0;
 }
 
-void NvimInitialize(Nvim *nvim, HWND hwnd) {
-	nvim->hwnd = hwnd;
-	
+void NvimInitialize(Nvim *nvim) {
 	HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info {
 		.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
@@ -111,6 +109,22 @@ void NvimInitialize(Nvim *nvim, HWND hwnd) {
 		nvim,
 		0, &_
 	);
+
+	// Set g:nvy global variable
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_set_var], &writer);
+	mpack_start_array(&writer, 2);
+	mpack_write_cstr(&writer, "nvy");
+	mpack_write_int(&writer, 1);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimAttach(Nvim *nvim, HWND hwnd) {
+	nvim->hwnd = hwnd;
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;

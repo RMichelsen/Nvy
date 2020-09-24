@@ -12,11 +12,13 @@ constexpr const char *NVIM_REQUEST_NAMES[] {
 };
 enum NvimOutboundNotification : uint8_t {
 	nvim_ui_attach = 0,
-	nvim_ui_try_resize = 1
+	nvim_ui_try_resize = 1,
+	nvim_set_var = 2
 };
 constexpr const char *NVIM_OUTBOUND_NOTIFICATION_NAMES[] {
 	"nvim_ui_attach",
-	"nvim_ui_try_resize"
+	"nvim_ui_try_resize",
+	"nvim_set_var"
 };
 enum class MouseButton {
 	Left,
@@ -48,7 +50,8 @@ struct Nvim {
 	PROCESS_INFORMATION process_info;
 };
 
-void NvimInitialize(Nvim *nvim, HWND hwnd);
+void NvimInitialize(Nvim *nvim);
+void NvimAttach(Nvim *nvim, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);

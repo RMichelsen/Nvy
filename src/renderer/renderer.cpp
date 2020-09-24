@@ -157,16 +157,19 @@ void HandleDeviceLost(Renderer *renderer) {
 	);
 }
 
-void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float font_size) {
-	renderer->hwnd = hwnd;
-	renderer->dpi_scale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
-
+void RendererInitialize(Renderer *renderer, const char *font, float font_size) {
+	renderer->dpi_scale = GetDpiFromDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
 	InitializeD2D(renderer);
 	InitializeD3D(renderer);
 	InitializeDWrite(renderer);
 	renderer->glyph_renderer = new GlyphRenderer(renderer);
+	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
+}
+
+void RendererAttach(Renderer *renderer, HWND hwnd) {
+	renderer->hwnd = hwnd;
 
 	RECT client_rect;
 	GetClientRect(hwnd, &client_rect);
@@ -175,8 +178,6 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, const char *font, float f
 		static_cast<uint32_t>(client_rect.right - client_rect.left),
 		static_cast<uint32_t>(client_rect.bottom - client_rect.top)
 	);
-
-	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
 }
 
 void RendererShutdown(Renderer *renderer) {
@@ -933,6 +934,13 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
             FinishDraw(renderer);
 		}
 	}
+}
+
+D2D1_SIZE_U RendererGridToPixelSize(Renderer *renderer, int rows, int cols) {
+	return D2D1_SIZE_U {
+		.width = static_cast<uint32_t>(renderer->font_width * cols),
+		.height = static_cast<uint32_t>(renderer->font_height * rows)
+	};
 }
 
 GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height) {
