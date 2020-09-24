@@ -7,6 +7,9 @@ in `init.vim`, for example:
 
 ![](resources/client.png)
 
+# Releases
+Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
+
 # Build & Dependencies
 Building should be straight forward, there are no external dependencies.\
 The only dependency Nvy uses is the excellent [MPack](https://github.com/ludocode/mpack) library
