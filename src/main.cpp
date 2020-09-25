@@ -60,9 +60,6 @@ void ToggleFullscreen(HWND hwnd, Context *context) {
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	Context *context = reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-	// if (!context) {
-	// 	return DefWindowProc(hwnd, msg, wparam, lparam);
-	// }
 	if (msg == WM_CREATE) {
 		LPCREATESTRUCT createStruct = reinterpret_cast<LPCREATESTRUCT>(lparam);
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
@@ -212,27 +209,49 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 
+	wchar_t file_name[MAX_PATH];
+	GetModuleFileName(NULL, file_name, MAX_PATH);
+
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(p_cmd_line, &n_args);
 	bool start_maximized = false;
 	int64_t rows = 0;
 	int64_t cols = 0;
 
+	constexpr int MAX_NVIM_CMD_LINE_SIZE = 32767;
+	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE];
+	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
+	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
+
 	for(int i = 0; i < n_args; ++i) {
-		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
+		// Skip argv[0]
+		if(i == 0 && !wcscmp(cmd_line_args[i], file_name)) {
+			continue;
+		}
+		else if(!wcscmp(cmd_line_args[i], L"--maximize")) {
 			start_maximized = true;
 		}
-		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", 11)) {
+		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
 			wchar_t *end_ptr;
 			cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
 			rows = wcstol(end_ptr + 1, nullptr, 10);
+		}
+		// Otherwise assume the argument is a filename to open
+		else {
+			size_t arg_size = wcslen(cmd_line_args[i]);
+			if(arg_size <= cmd_line_size_left) {
+				wcscat_s(nvim_command_line, cmd_line_size_left, L" ");
+				cmd_line_size_left -= 1;
+				wcscat_s(nvim_command_line, cmd_line_size_left, cmd_line_args[i]);
+				cmd_line_size_left -= arg_size;
+			}
 		}
 	}
 
 	Renderer renderer {};
 	RendererInitialize(&renderer, "Consolas", 18.0f);
 	Nvim nvim {};
-	NvimInitialize(&nvim);
+	NvimInitialize(&nvim, nvim_command_line);
 	Context context {
 		.nvim = &nvim,
 		.renderer = &renderer,

@@ -55,7 +55,7 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param) {
 	return 0;
 }
 
-void NvimInitialize(Nvim *nvim) {
+void NvimInitialize(Nvim *nvim, wchar_t *command_line) {
 	HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info {
 		.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
@@ -79,7 +79,7 @@ void NvimInitialize(Nvim *nvim) {
 		.hStdError = nvim->stdout_write
 	};
 
-	wchar_t command_line[] = L"nvim --embed";
+	// wchar_t command_line[] = L"nvim --embed";
 	CreateProcessW(
 		nullptr,
 		command_line,

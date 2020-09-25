@@ -50,7 +50,7 @@ struct Nvim {
 	PROCESS_INFORMATION process_info;
 };
 
-void NvimInitialize(Nvim *nvim);
+void NvimInitialize(Nvim *nvim, wchar_t *command_line);
 void NvimAttach(Nvim *nvim, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
