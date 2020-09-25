@@ -31,6 +31,10 @@ struct GridSize {
 	int rows;
 	int cols;
 };
+struct PixelSize {
+	int width;
+	int height;
+};
 
 struct CursorModeInfo {
 	CursorShape shape;
@@ -98,14 +102,15 @@ struct Renderer {
 	bool ui_busy;
 };
 
-void RendererInitialize(Renderer *renderer, const char *font, float font_size);
-void RendererAttach(Renderer *renderer, HWND hwnd);
+void RendererInitialize(Renderer *renderer, const char *font, float font_size, HWND hwnd);
+void RendererAttach(Renderer *renderer);
 void RendererShutdown(Renderer *renderer);
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
+void RendererUpdateFontFromMPack(Renderer *renderer, mpack_node_t guifont_node);
 void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
 void RendererRedraw(Renderer *renderer, mpack_node_t params);
 
-D2D1_SIZE_U RendererGridToPixelSize(Renderer *renderer, int rows, int cols);
+PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols);
 GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height);
 GridPoint RendererCursorToGridPoint(Renderer *renderer, int x, int y);

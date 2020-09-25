@@ -157,7 +157,9 @@ void HandleDeviceLost(Renderer *renderer) {
 	);
 }
 
-void RendererInitialize(Renderer *renderer, const char *font, float font_size) {
+void RendererInitialize(Renderer *renderer, const char *font, float font_size, HWND hwnd) {
+	renderer->hwnd = hwnd;
+
 	renderer->dpi_scale = GetDpiFromDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
@@ -168,11 +170,9 @@ void RendererInitialize(Renderer *renderer, const char *font, float font_size) {
 	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
 }
 
-void RendererAttach(Renderer *renderer, HWND hwnd) {
-	renderer->hwnd = hwnd;
-
+void RendererAttach(Renderer *renderer) {
 	RECT client_rect;
-	GetClientRect(hwnd, &client_rect);
+	GetClientRect(renderer->hwnd, &client_rect);
 	InitializeWindowDependentResources(
 		renderer,
 		static_cast<uint32_t>(client_rect.right - client_rect.left),
@@ -790,6 +790,30 @@ void DrawBorderRectangles(Renderer *renderer) {
     }
 }
 
+void RendererUpdateFontFromMPack(Renderer *renderer, mpack_node_t guifont_node) {
+	size_t strlen = mpack_node_strlen(guifont_node);
+	if (strlen == 0) {
+		return;
+	}
+
+	const char *font_str = mpack_node_str(guifont_node);
+	const char *size_str = strstr(font_str, ":h");
+	if (!size_str) {
+		return;
+	}
+
+	size_t font_str_len = size_str - font_str;
+	size_t size_str_len = strlen - (font_str_len + 2);
+	size_str += 2;
+	
+	assert(size_str_len < 64);
+	char font_size[64];
+	memcpy(font_size, size_str, size_str_len);
+	font_size[size_str_len] = '\0';
+
+	RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), font_str, static_cast<int>(font_str_len));
+}
+
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
 	uint64_t option_set_length = mpack_node_array_length(option_set);
 
@@ -797,27 +821,7 @@ void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
 		mpack_node_t name = mpack_node_array_at(mpack_node_array_at(option_set, i), 0);
 		mpack_node_t value = mpack_node_array_at(mpack_node_array_at(option_set, i), 1);
 		if (MPackMatchString(name, "guifont")) {
-			size_t strlen = mpack_node_strlen(value);
-            if (strlen == 0) {
-				continue;
-			}
-
-			const char *font_str = mpack_node_str(value);
-			const char *size_str = strstr(font_str, ":h");
-			if (!size_str) {
-				continue;
-			}
-
-			size_t font_str_len = size_str - font_str;
-			size_t size_str_len = strlen - (font_str_len + 2);
-			size_str += 2;
-			
-			assert(size_str_len < 64);
-			char font_size[64];
-			memcpy(font_size, size_str, size_str_len);
-			font_size[size_str_len] = '\0';
-
-			RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), font_str, static_cast<int>(font_str_len));
+			RendererUpdateFontFromMPack(renderer, value);
 			// Send message to window in order to update nvim row/col count
 			PostMessage(renderer->hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
 		}
@@ -936,10 +940,16 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 	}
 }
 
-D2D1_SIZE_U RendererGridToPixelSize(Renderer *renderer, int rows, int cols) {
-	return D2D1_SIZE_U {
-		.width = static_cast<uint32_t>(renderer->font_width * cols),
-		.height = static_cast<uint32_t>(renderer->font_height * rows)
+PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols) {
+	int requested_width = static_cast<int>(ceilf(renderer->font_width) * cols);
+	int requested_height = static_cast<int>(ceilf(renderer->font_height) * rows);
+
+	// Adjust size to include title bar
+	RECT adjusted_rect = { 0, 0, requested_width, requested_height };
+	AdjustWindowRect(&adjusted_rect, WS_OVERLAPPEDWINDOW, false);
+	return PixelSize {
+		.width = adjusted_rect.right - adjusted_rect.left,
+		.height = adjusted_rect.bottom - adjusted_rect.top
 	};
 }
 

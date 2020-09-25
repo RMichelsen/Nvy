@@ -13,8 +13,13 @@ inline bool MPackMatchString(mpack_node_t node, const char *str_to_match) {
 }
 
 enum class MPackMessageType {
+	Request = 0,
 	Response = 1,
 	Notification = 2
+};
+struct MPackRequest {
+	mpack_node_t method;
+	int64_t msg_id;
 };
 struct MPackResponse {
 	mpack_node_t error;
@@ -27,6 +32,7 @@ struct MPackMessageResult {
 	MPackMessageType type;
 	mpack_node_t params;
 	union {
+		MPackRequest request;
 		MPackResponse response;
 		MPackNotification notification;
 	};
@@ -64,7 +70,20 @@ inline MPackMessageResult MPackExtractMessageResult(mpack_tree_t *tree) {
 	assert(mpack_node_array_at(root, 0).data->type == mpack_type_uint);
 
 	MPackMessageType message_type = static_cast<MPackMessageType>(mpack_node_array_at(root, 0).data->value.i);
-	if (message_type == MPackMessageType::Response) {
+	if (message_type == MPackMessageType::Request) {
+		assert(mpack_node_array_at(root, 1).data->type == mpack_type_uint);
+		assert(mpack_node_array_at(root, 2).data->type == mpack_type_str);
+		
+		return MPackMessageResult {
+			.type = message_type,
+			.params = mpack_node_array_at(root, 3),
+			.request = {
+				.method = mpack_node_array_at(root, 2),
+				.msg_id = mpack_node_array_at(root, 1).data->value.i
+			}
+		};
+	}
+	else if (message_type == MPackMessageType::Response) {
 		assert(mpack_node_array_at(root, 1).data->type == mpack_type_uint);
 		assert(mpack_node_array_at(root, 2).data->type == mpack_type_nil);
 

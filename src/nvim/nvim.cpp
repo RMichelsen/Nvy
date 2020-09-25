@@ -1,4 +1,6 @@
 #include "nvim.h"
+#include "common/mpack_helper.h"
+#include "third_party/mpack/mpack.h"
 
 constexpr int Megabytes(int n) {
     return 1024 * 1024 * n;
@@ -55,7 +57,9 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param) {
 	return 0;
 }
 
-void NvimInitialize(Nvim *nvim, wchar_t *command_line) {
+void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
+	nvim->hwnd = hwnd;
+
 	HANDLE job_object = CreateJobObjectW(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info {
 		.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
@@ -110,28 +114,66 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line) {
 		0, &_
 	);
 
-	// Set g:nvy global variable
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_set_var], &writer);
-	mpack_start_array(&writer, 2);
-	mpack_write_cstr(&writer, "nvy");
-	mpack_write_int(&writer, 1);
-	mpack_finish_array(&writer);
-	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
-}
-
-void NvimAttach(Nvim *nvim, HWND hwnd) {
-	nvim->hwnd = hwnd;
-
+	// Query api info
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 	MPackStartRequest(RegisterRequest(nvim, vim_get_api_info), NVIM_REQUEST_NAMES[vim_get_api_info], &writer);
 	mpack_start_array(&writer, 0);
 	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+
+	// Set g:nvy global variable
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_set_var], &writer);
+	mpack_start_array(&writer, 2);
+	mpack_write_cstr(&writer, "nvy");
+	mpack_write_int(&writer, 1);
+	mpack_finish_array(&writer);
+	size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+
+	// Have vim block after ui_attach, so we can
+	// query for user-set guifont and appropriately set up up the UI
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_command], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, "autocmd VimEnter * call rpcrequest(1, 'vimenter')");
+	mpack_finish_array(&writer);
+	size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+
+	// Dummy row/col count, will be resized
+	// upon receiving the guifont information
+	// and before rendering to the user
+	NvimSendUIAttach(nvim, 5, 5);
+}
+
+void NvimRequestGuifont(Nvim *nvim) {
+	// Request guifont variable, before ui-attach so
+	// we don't have to resize or initialize anything twice
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_get_option), NVIM_REQUEST_NAMES[nvim_get_option], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, "guifont");
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimPostInitialize(Nvim *nvim) {
+	// Respond to blocking vimenter call to start up the UI
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	mpack_start_array(&writer, 4);
+	mpack_write_int(&writer, 1);
+	mpack_write_int(&writer, nvim->vimenter_id);
+	mpack_write_nil(&writer);
+	mpack_write_nil(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }
@@ -154,8 +196,9 @@ void NvimShutdown(Nvim *nvim) {
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 
+	// Send UI attach notification
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_ui_attach], &writer);
 	mpack_start_array(&writer, 3);
 	mpack_write_int(&writer, grid_cols);

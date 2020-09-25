@@ -2,39 +2,15 @@
 #include "renderer/renderer.h"
 
 struct Context {
+	GridSize start_grid_size;
+	bool start_maximized;
+	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
-	WINDOWPLACEMENT saved_window_placement;
-	GridPoint cached_cursor_grid_pos;
 	bool xbuttons[2];
+	GridPoint cached_cursor_grid_pos;
+	WINDOWPLACEMENT saved_window_placement;
 };
-
-void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
-	MPackMessageResult result = MPackExtractMessageResult(tree);
-
-	if (result.type == MPackMessageType::Response) {
-		assert(result.response.msg_id <= context->nvim->next_msg_id);
-		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
-		case NvimRequest::vim_get_api_info: {
-			mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
-			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
-			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
-			assert(api_level > 6);
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer, 
-				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			NvimSendUIAttach(context->nvim, rows, cols);
-		} break;
-        case NvimRequest::nvim_input:
-        case NvimRequest::nvim_input_mouse: {
-        } break;
-		}
-	}
-	else if (result.type == MPackMessageType::Notification) {
-		if (MPackMatchString(result.notification.name, "redraw")) {
-			RendererRedraw(context->renderer, result.params);
-		}
-	}
-}
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
 	DWORD style = GetWindowLong(hwnd, GWL_STYLE);
@@ -55,6 +31,67 @@ void ToggleFullscreen(HWND hwnd, Context *context) {
 		SetWindowPlacement(hwnd, &context->saved_window_placement);
 		SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
 			SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+	}
+}
+
+void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
+	MPackMessageResult result = MPackExtractMessageResult(tree);
+
+	if (result.type == MPackMessageType::Request) {
+		const char *method = mpack_node_str(result.request.method);
+		size_t method_strlen = mpack_node_strlen(result.request.method);
+		if(!strncmp(method, "vimenter", method_strlen)) {
+			context->nvim->vimenter_id = result.request.msg_id;
+			// Request guifont
+			NvimRequestGuifont(context->nvim);
+		}
+	}
+	else if (result.type == MPackMessageType::Response) {
+		assert(result.response.msg_id <= context->nvim->next_msg_id);
+		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
+		case NvimRequest::vim_get_api_info: {
+			mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
+			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
+			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
+			assert(api_level > 6);
+		} break;
+		case NvimRequest::nvim_get_option: {
+			// Set the font specified by guifont and send the OK! to vim
+			// to start sending us redraw requests
+			RendererUpdateFontFromMPack(context->renderer, result.params);
+			NvimPostInitialize(context->nvim);
+
+			// Resize the window in case specific dimensions were requested
+			if(context->start_grid_size.rows != 0 &&
+			   context->start_grid_size.cols != 0) {
+				PixelSize start_size = RendererGridToPixelSize(context->renderer, 
+						context->start_grid_size.rows, context->start_grid_size.cols);
+				RECT client_rect;
+				GetClientRect(context->hwnd, &client_rect);
+				MoveWindow(context->hwnd, client_rect.left, client_rect.top,
+						start_size.width, start_size.height, false);
+			}
+
+			// Attach the renderer now that the window size is determined
+			RendererAttach(context->renderer);
+			auto [rows, cols] = RendererPixelsToGridSize(context->renderer, 
+				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
+			NvimSendResize(context->nvim, rows, cols);
+
+			if(context->start_maximized) {
+				ToggleFullscreen(context->hwnd, context);
+			}
+			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
+		} break;
+        case NvimRequest::nvim_input:
+        case NvimRequest::nvim_input_mouse: {
+        } break;
+		}
+	}
+	else if (result.type == MPackMessageType::Notification) {
+		if (MPackMatchString(result.notification.name, "redraw")) {
+			RendererRedraw(context->renderer, result.params);
+		}
 	}
 }
 
@@ -209,11 +246,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 
-	wchar_t file_name[MAX_PATH];
-	GetModuleFileName(NULL, file_name, MAX_PATH);
-
 	int n_args;
-	LPWSTR *cmd_line_args = CommandLineToArgvW(p_cmd_line, &n_args);
+	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
 	bool start_maximized = false;
 	int64_t rows = 0;
 	int64_t cols = 0;
@@ -223,12 +257,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
 	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
 
-	for(int i = 0; i < n_args; ++i) {
-		// Skip argv[0]
-		if(i == 0 && !wcscmp(cmd_line_args[i], file_name)) {
-			continue;
-		}
-		else if(!wcscmp(cmd_line_args[i], L"--maximize")) {
+	// Skip argv[0]
+	for(int i = 1; i < n_args; ++i) {
+		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
 			start_maximized = true;
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
@@ -248,32 +279,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		}
 	}
 
-	Renderer renderer {};
-	RendererInitialize(&renderer, "Consolas", 18.0f);
-	Nvim nvim {};
-	NvimInitialize(&nvim, nvim_command_line);
-	Context context {
-		.nvim = &nvim,
-		.renderer = &renderer,
-		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
-	};
-
-	int initial_width = CW_USEDEFAULT;
-	int initial_height = CW_USEDEFAULT;
-	if(rows != 0 && cols != 0) {
-		D2D1_SIZE_U initial_pixel_size = RendererGridToPixelSize(&renderer, rows, cols);
-		initial_width = static_cast<int>(initial_pixel_size.width);
-		initial_height = static_cast<int>(initial_pixel_size.height);
-		// Adjust size to include title bar
-		RECT adjusted_rect = {0, 0, initial_width, initial_height};
-		AdjustWindowRect(&adjusted_rect, WS_OVERLAPPEDWINDOW, false);
-		initial_width = adjusted_rect.right - adjusted_rect.left;
-		initial_height = adjusted_rect.bottom - adjusted_rect.top;
-	}
-
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
-
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
 		.style = CS_HREDRAW | CS_VREDRAW,
@@ -290,28 +297,38 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		return 1;
 	}
 
+	Nvim nvim {};
+	Renderer renderer {};
+	Context context {
+		.start_grid_size {
+			.rows = static_cast<int>(rows),
+			.cols = static_cast<int>(cols)
+		},
+		.start_maximized = start_maximized,
+
+		.nvim = &nvim,
+		.renderer = &renderer,
+		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
+	};
+
 	HWND hwnd = CreateWindow(
 		window_class_name,
 		window_title,
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		initial_width,
-		initial_height,
+		CW_USEDEFAULT,
+		CW_USEDEFAULT,
 		nullptr,
 		nullptr,
 		instance,
 		&context
 	);
 	if (hwnd == NULL) return 1;
-	RendererAttach(&renderer, hwnd);
-	NvimAttach(&nvim, hwnd);
+	context.hwnd = hwnd;
+	RendererInitialize(&renderer, "Consolas", 16.0f, hwnd);
+	NvimInitialize(&nvim, nvim_command_line, hwnd);
 	
-	if(start_maximized) {
-		ToggleFullscreen(hwnd, &context);
-	}
-	ShowWindow(hwnd, n_cmd_show);
-
 	MSG msg;
 	while (GetMessage(&msg, 0, 0, 0)) {
 		TranslateMessage(&msg);
