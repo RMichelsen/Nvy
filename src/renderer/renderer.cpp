@@ -157,7 +157,7 @@ void HandleDeviceLost(Renderer *renderer) {
 	);
 }
 
-void RendererInitialize(Renderer *renderer, const char *font, float font_size, HWND hwnd) {
+void RendererInitialize(Renderer *renderer, HWND hwnd) {
 	renderer->hwnd = hwnd;
 
 	renderer->dpi_scale = GetDpiFromDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) / 96.0f;
@@ -167,7 +167,7 @@ void RendererInitialize(Renderer *renderer, const char *font, float font_size, H
 	InitializeD3D(renderer);
 	InitializeDWrite(renderer);
 	renderer->glyph_renderer = new GlyphRenderer(renderer);
-	RendererUpdateFont(renderer, font_size, font, static_cast<int>(strlen(font)));
+	RendererUpdateFont(renderer, DEFAULT_FONT_SIZE, DEFAULT_FONT, static_cast<int>(strlen(DEFAULT_FONT)));
 }
 
 void RendererAttach(Renderer *renderer) {
@@ -804,12 +804,16 @@ void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strle
 	size_t size_str_len = strlen - (font_str_len + 2);
 	size_str += 2;
 
-	assert(size_str_len < 64);
-	char font_size[64];
-	memcpy(font_size, size_str, size_str_len);
-	font_size[size_str_len] = '\0';
+	float font_size = DEFAULT_FONT_SIZE;
+	// Assume font size part of string is less than 256 characters
+	if(size_str_len < 256) {
+		char font_size_str[256];
+		memcpy(font_size_str, size_str, size_str_len);
+		font_size_str[size_str_len] = '\0';
+		font_size = static_cast<float>(atof(font_size_str));
+	}
 
-	RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), guifont, static_cast<int>(font_str_len));
+	RendererUpdateFont(renderer, font_size, guifont, static_cast<int>(font_str_len));
 }
 
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {

@@ -1,5 +1,8 @@
 #pragma once
 
+constexpr const char *DEFAULT_FONT = "Consolas";
+constexpr float DEFAULT_FONT_SIZE = 14.0f;
+
 constexpr uint32_t DEFAULT_COLOR = 0x46464646;
 enum HighlightAttributeFlags : uint16_t {
 	HL_ATTRIB_REVERSE			= 1 << 0,
@@ -102,7 +105,7 @@ struct Renderer {
 	bool ui_busy;
 };
 
-void RendererInitialize(Renderer *renderer, const char *font, float font_size, HWND hwnd);
+void RendererInitialize(Renderer *renderer, HWND hwnd);
 void RendererAttach(Renderer *renderer);
 void RendererShutdown(Renderer *renderer);
 

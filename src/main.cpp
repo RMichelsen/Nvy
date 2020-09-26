@@ -318,7 +318,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	RendererInitialize(&renderer, "Consolas", 16.0f, hwnd);
+	RendererInitialize(&renderer, hwnd);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 	
 	MSG msg;
