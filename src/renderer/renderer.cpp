@@ -790,28 +790,26 @@ void DrawBorderRectangles(Renderer *renderer) {
     }
 }
 
-void RendererUpdateFontFromMPack(Renderer *renderer, mpack_node_t guifont_node) {
-	size_t strlen = mpack_node_strlen(guifont_node);
+void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen) {
 	if (strlen == 0) {
 		return;
 	}
 
-	const char *font_str = mpack_node_str(guifont_node);
-	const char *size_str = strstr(font_str, ":h");
+	const char *size_str = strstr(guifont, ":h");
 	if (!size_str) {
 		return;
 	}
 
-	size_t font_str_len = size_str - font_str;
+	size_t font_str_len = size_str - guifont;
 	size_t size_str_len = strlen - (font_str_len + 2);
 	size_str += 2;
-	
+
 	assert(size_str_len < 64);
 	char font_size[64];
 	memcpy(font_size, size_str, size_str_len);
 	font_size[size_str_len] = '\0';
 
-	RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), font_str, static_cast<int>(font_str_len));
+	RendererUpdateFont(renderer, static_cast<float>(atof(font_size)), guifont, static_cast<int>(font_str_len));
 }
 
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
@@ -821,7 +819,10 @@ void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
 		mpack_node_t name = mpack_node_array_at(mpack_node_array_at(option_set, i), 0);
 		mpack_node_t value = mpack_node_array_at(mpack_node_array_at(option_set, i), 1);
 		if (MPackMatchString(name, "guifont")) {
-			RendererUpdateFontFromMPack(renderer, value);
+			const char *font_str = mpack_node_str(value);
+			size_t strlen = mpack_node_strlen(value);
+			RendererUpdateGuiFont(renderer, font_str, strlen);
+
 			// Send message to window in order to update nvim row/col count
 			PostMessage(renderer->hwnd, WM_RENDERER_FONT_UPDATE, 0, 0);
 		}

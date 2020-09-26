@@ -46,6 +46,10 @@ struct Vec {
 		return static_cast<size_t>(alloc_end - data_begin);
 	}
 
+	inline bool empty() {
+		return size() == 0;
+	}
+
 	inline void push_back(const T &item) {
 		if (capacity() <= size()) {
 			grow();

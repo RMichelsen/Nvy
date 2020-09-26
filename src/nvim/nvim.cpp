@@ -134,47 +134,13 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 
-	// Have vim block after ui_attach, so we can
-	// query for user-set guifont and appropriately set up up the UI
+	// Query stdpath to find the users init.vim
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	MPackStartNotification(NVIM_OUTBOUND_NOTIFICATION_NAMES[nvim_command], &writer);
+	MPackStartRequest(RegisterRequest(nvim, nvim_eval), NVIM_REQUEST_NAMES[nvim_eval], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, "autocmd VimEnter * call rpcrequest(1, 'vimenter')");
+	mpack_write_cstr(&writer, "stdpath('config')");
 	mpack_finish_array(&writer);
 	size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
-
-	// Dummy row/col count, will be resized
-	// upon receiving the guifont information
-	// and before rendering to the user
-	NvimSendUIAttach(nvim, 5, 5);
-}
-
-void NvimRequestGuifont(Nvim *nvim) {
-	// Request guifont variable, before ui-attach so
-	// we don't have to resize or initialize anything twice
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	MPackStartRequest(RegisterRequest(nvim, nvim_get_option), NVIM_REQUEST_NAMES[nvim_get_option], &writer);
-	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, "guifont");
-	mpack_finish_array(&writer);
-	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
-}
-
-void NvimPostInitialize(Nvim *nvim) {
-	// Respond to blocking vimenter call to start up the UI
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	mpack_start_array(&writer, 4);
-	mpack_write_int(&writer, 1);
-	mpack_write_int(&writer, nvim->vimenter_id);
-	mpack_write_nil(&writer);
-	mpack_write_nil(&writer);
-	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
@@ -191,6 +157,73 @@ void NvimShutdown(Nvim *nvim) {
 		TerminateProcess(nvim->process_info.hProcess, 0);
 		CloseHandle(nvim->process_info.hProcess);
 	}
+}
+
+void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out) {
+	char path[MAX_PATH];
+	const char *config_path = mpack_node_str(config_node);
+	size_t config_path_strlen = mpack_node_strlen(config_node);
+	strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
+	strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
+
+	HANDLE config_file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (config_file == INVALID_HANDLE_VALUE) {
+		return;
+	}
+
+	char *buffer;
+	LARGE_INTEGER file_size;
+	if (!GetFileSizeEx(config_file, &file_size)) {
+		CloseHandle(config_file);
+		return;
+	}
+	buffer = static_cast<char *>(malloc(file_size.QuadPart));
+
+	DWORD bytes_read;
+	if (!ReadFile(config_file, buffer, file_size.QuadPart, &bytes_read, NULL)) {
+		CloseHandle(config_file);
+		free(buffer);
+		return;
+	}
+	CloseHandle(config_file);
+
+	char *strtok_context;
+	char *line = strtok_s(buffer, "\r\n", &strtok_context);
+	while (line) {
+		char *guifont = strstr(line, "set guifont=");
+		if (guifont) {
+			// Check if we're inside a comment
+			int leading_count = guifont - line;
+			bool inside_comment = false;
+			for (int i = 0; i < leading_count; ++i) {
+				if (line[i] == '"') {
+					inside_comment = !inside_comment;
+				}
+			}
+			if (!inside_comment) {
+				guifont_out->clear();
+
+				int line_offset = (guifont - line + strlen("set guifont="));
+				int guifont_strlen = strlen(line) - line_offset;
+				int escapes = 0;
+				for (int i = 0; i < guifont_strlen; ++i) {
+					if (line[line_offset + i] == '\\' && i < (guifont_strlen - 1) && line[line_offset + i + 1] == ' ') {
+						guifont_out->push_back(' ');
+						++i;
+						continue;
+					}
+					guifont_out->push_back(line[i + line_offset]);
+
+				}
+				guifont_out->push_back('\0');
+			}
+		}
+		line = strtok_s(NULL, "\r\n", &strtok_context);
+	}
+
+	free(buffer);
 }
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {

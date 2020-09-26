@@ -37,16 +37,7 @@ void ToggleFullscreen(HWND hwnd, Context *context) {
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
-	if (result.type == MPackMessageType::Request) {
-		const char *method = mpack_node_str(result.request.method);
-		size_t method_strlen = mpack_node_strlen(result.request.method);
-		if(!strncmp(method, "vimenter", method_strlen)) {
-			context->nvim->vimenter_id = result.request.msg_id;
-			// Request guifont
-			NvimRequestGuifont(context->nvim);
-		}
-	}
-	else if (result.type == MPackMessageType::Response) {
+	if (result.type == MPackMessageType::Response) {
 		assert(result.response.msg_id <= context->nvim->next_msg_id);
 		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
 		case NvimRequest::vim_get_api_info: {
@@ -55,30 +46,31 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
 			assert(api_level > 6);
 		} break;
-		case NvimRequest::nvim_get_option: {
-			// Set the font specified by guifont and send the OK! to vim
-			// to start sending us redraw requests
-			RendererUpdateFontFromMPack(context->renderer, result.params);
-			NvimPostInitialize(context->nvim);
+		case NvimRequest::nvim_eval: {
+			Vec<char> guifont_buffer;
+			NvimParseConfig(context->nvim, result.params, &guifont_buffer);
 
-			// Resize the window in case specific dimensions were requested
-			if(context->start_grid_size.rows != 0 &&
-			   context->start_grid_size.cols != 0) {
-				PixelSize start_size = RendererGridToPixelSize(context->renderer, 
-						context->start_grid_size.rows, context->start_grid_size.cols);
+			if (!guifont_buffer.empty()) {
+				RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
+			}
+
+			if (context->start_grid_size.rows != 0 &&
+				context->start_grid_size.cols != 0) {
+				PixelSize start_size = RendererGridToPixelSize(context->renderer,
+					context->start_grid_size.rows, context->start_grid_size.cols);
 				RECT client_rect;
 				GetClientRect(context->hwnd, &client_rect);
 				MoveWindow(context->hwnd, client_rect.left, client_rect.top,
-						start_size.width, start_size.height, false);
+					start_size.width, start_size.height, false);
 			}
 
 			// Attach the renderer now that the window size is determined
 			RendererAttach(context->renderer);
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer, 
+			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			NvimSendResize(context->nvim, rows, cols);
+			NvimSendUIAttach(context->nvim, rows, cols);
 
-			if(context->start_maximized) {
+			if (context->start_maximized) {
 				ToggleFullscreen(context->hwnd, context);
 			}
 			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
