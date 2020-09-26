@@ -1,14 +1,16 @@
 # Nvy
-Nvy is a minimal [Neovim](https://neovim.io/) client for Windows written in C++.\
-It uses DirectWrite to shape and render the grid cells and text.\
-Fonts can be changed by setting the guifont
-in `init.vim`, for example:
-`set guifont=Fira\ Code:h24`
+Nvy is a minimal [Neovim](https://neovim.io/) client for Windows written in C++.
+It uses DirectWrite to shape and render the grid cells and text.
+
 
 ![](resources/client.png)
 
 # Configuration
 Nvy sets the global vim variable `g:nvy = 1` in case you want to specialize your init.vim while using Nvy.
+
+Fonts can be changed by setting the guifont in `init.vim`, for example:
+`set guifont=Fira\ Code:h24`. <br>
+Note: you have to specify the font size, e.g. `set guifont=Fira\ Code` won't work.
 
 Nvy can be started with the following flags:
 - `--maximize` to start in fullscreen
