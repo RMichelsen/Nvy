@@ -320,6 +320,9 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	case VK_RETURN: {
 		key = "CR";
 	} break;
+	case VK_SPACE: {
+		key = "Space";
+	} break;
 	case VK_ESCAPE: {
 		key = "Esc";
 	} break;

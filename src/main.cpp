@@ -122,7 +122,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		if (wparam == 0x3C) {
 			NvimSendInput(context->nvim, "<LT>");
 		}
-		else {
+		else if(wparam > 0x20 && wparam != 0x7F) {
 			NvimSendInput(context->nvim, static_cast<wchar_t>(wparam));
 		}
 	} return 0;
