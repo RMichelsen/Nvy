@@ -427,6 +427,42 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	case VK_F12: {
 		key = "F12";
 	} break;
+	case VK_F13: {
+		key = "F13";
+	} break;
+	case VK_F14: {
+		key = "F14";
+	} break;
+	case VK_F15: {
+		key = "F15";
+	} break;
+	case VK_F16: {
+		key = "F16";
+	} break;
+	case VK_F17: {
+		key = "F17";
+	} break;
+	case VK_F18: {
+		key = "F18";
+	} break;
+	case VK_F19: {
+		key = "F19";
+	} break;
+	case VK_F20: {
+		key = "F20";
+	} break;
+	case VK_F21: {
+		key = "F21";
+	} break;
+	case VK_F22: {
+		key = "F22";
+	} break;
+	case VK_F23: {
+		key = "F23";
+	} break;
+	case VK_F24: {
+		key = "F24";
+	} break;
 	default: {
 		if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
 			(ctrl_down || alt_down)) {
