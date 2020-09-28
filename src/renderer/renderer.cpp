@@ -229,8 +229,7 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	WIN_CHECK(renderer->dwrite_factory->GetSystemFontCollection(&font_collection));
 
 	int wstrlen = MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, 0, 0);
-
-	if (wstrlen < MAX_FONT_LENGTH) {
+	if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH) {
 		MultiByteToWideChar(CP_UTF8, 0, font_string, strlen, renderer->font, MAX_FONT_LENGTH - 1);
 		renderer->font[wstrlen] = L'\0';
 	}
