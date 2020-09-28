@@ -259,30 +259,43 @@ void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols) {
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
-void NvimSendInput(Nvim *nvim, char input_char) {
+void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
+	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+
+	constexpr int MAX_INPUT_STRING_SIZE = 64;
+	char input_string[MAX_INPUT_STRING_SIZE];
+
+	if(shift_down || ctrl_down || alt_down || virtual_key) {
+		snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>", ctrl_down ? "C-" : "", 
+				shift_down ? "S-" : "", alt_down ? "M-" : "", input);
+	}
+	else {
+		snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s", input);
+	}
+
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-
 	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_str(&writer, &input_char, 1);
+	mpack_write_cstr(&writer, input_string);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
-void NvimSendInput(Nvim *nvim, const char *input_chars) {
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+void NvimSendInput(Nvim *nvim, wchar_t input_char) {
+	char utf8_encoded[3] = { '\0', '\0', '\0' };
+	utf8_encoded[2] = '\0';
+	int length = WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL);
+	if(length <= 0 || length > 2) {
+		return;
+	}
+	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 2, NULL, NULL);
 
-	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
-	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, input_chars);
-	mpack_finish_array(&writer);
-	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
+	NvimSendModifiedInput(nvim, utf8_encoded, false);
 }
 
 void NvimSendInput(Nvim *nvim, int virtual_key) {
@@ -290,9 +303,6 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
 
-	constexpr int MAX_INPUT_STRING_SIZE = 64;
-	char input_string[MAX_INPUT_STRING_SIZE];
-	char single_key[2] = { '\0', '\0' };
 	const char *key;
 	switch (virtual_key) {
 	case VK_SHIFT: {
@@ -464,26 +474,20 @@ void NvimSendInput(Nvim *nvim, int virtual_key) {
 		key = "F24";
 	} break;
 	default: {
-		if (static_cast<char>(virtual_key) >= 0x20 && static_cast<char>(virtual_key) <= 0x7E &&
-			(ctrl_down || alt_down)) {
-			// Convert to lower case
-			single_key[0] = static_cast<char>(virtual_key |= 32);
-			key = single_key;
-		}
-		else {
-			return;
-		}
-	} break;
+	} return;
 	}
 
-	snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>", ctrl_down ? "C-" : "", shift_down ? "S-" : "", alt_down ? "M-" : "", key);
+	NvimSendModifiedInput(nvim, key, true);
+}
 
+void NvimSendInput(Nvim *nvim, const char *input_chars) {
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
 	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, input_string);
+	mpack_write_cstr(&writer, input_chars);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
