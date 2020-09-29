@@ -133,7 +133,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else {
-			NvimSendInput(context->nvim, static_cast<int>(wparam));
+			MSG peek;
+			PeekMessage(&peek, NULL, 0, 0, PM_NOREMOVE);
+			if(msg.message != WM_CHAR) {
+				NvimSendInput(context->nvim, static_cast<int>(wparam), static_cast<int>(lparam));
+			}
 		}
 	} return 0;
 	case WM_MOUSEMOVE: {
@@ -235,8 +239,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
+void OpenConsole() {	
+	FILE *dummy;	
+	AllocConsole();	
+	freopen_s(&dummy, "CONIN$", "r", stdin);	
+	freopen_s(&dummy, "CONOUT$", "w", stdout);	
+	freopen_s(&dummy, "CONOUT$", "w", stderr);	
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+	OpenConsole();
 
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
