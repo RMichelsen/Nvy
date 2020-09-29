@@ -269,7 +269,6 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 
 	snprintf(input_string, MAX_INPUT_STRING_SIZE, "<%s%s%s%s>", ctrl_down ? "C-" : "", 
 			shift_down ? "S-" : "", alt_down ? "M-" : "", input);
-	printf("%s\n", input_string);
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
@@ -282,14 +281,12 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
-void NvimSendInput(Nvim *nvim, wchar_t input_char) {
-	char utf8_encoded[3] = { '\0', '\0', '\0' };
-	utf8_encoded[2] = '\0';
-	int length = WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL);
-	if(length <= 0 || length > 2) {
+void NvimSendChar(Nvim *nvim, wchar_t input_char) {
+	char utf8_encoded[64]{};
+	if(!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
 		return;
 	}
-	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 2, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
@@ -302,19 +299,94 @@ void NvimSendInput(Nvim *nvim, wchar_t input_char) {
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
-void NvimSendInput(Nvim *nvim, int virtual_key, int flags) {
-	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+void NvimSendSysChar(Nvim *nvim, wchar_t input_char) {
+	char utf8_encoded[64]{};
+	if(!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
+		return;
+	}
+	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
 
+	NvimSendModifiedInput(nvim, utf8_encoded, true);
+}
+
+void NvimSendInput(Nvim *nvim, const char *input_chars) {
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
+	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, input_chars);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col) {
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_input_mouse), NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
+	mpack_start_array(&writer, 6);
+
+	switch (button) {
+	case MouseButton::Left: {
+		mpack_write_cstr(&writer, "left");
+	} break;
+	case MouseButton::Right: {
+		mpack_write_cstr(&writer, "right");
+	} break;
+	case MouseButton::Middle: {
+		mpack_write_cstr(&writer, "middle");
+	} break;
+	case MouseButton::Wheel: {
+		mpack_write_cstr(&writer, "wheel");
+	} break;
+	}
+	switch (action) {
+	case MouseAction::Press: {
+		mpack_write_cstr(&writer, "press");
+	} break;
+	case MouseAction::Drag: {
+		mpack_write_cstr(&writer, "drag");
+	} break;
+	case MouseAction::Release: {
+		mpack_write_cstr(&writer, "release");
+	} break;
+	case MouseAction::MouseWheelUp: {
+		mpack_write_cstr(&writer, "up");
+	} break;
+	case MouseAction::MouseWheelDown: {
+		mpack_write_cstr(&writer, "down");
+	} break;
+	case MouseAction::MouseWheelLeft: {
+		mpack_write_cstr(&writer, "left");
+	} break;
+	case MouseAction::MouseWheelRight: {
+		mpack_write_cstr(&writer, "right");
+	} break;
+	}
+
+	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
+	constexpr int MAX_INPUT_STRING_SIZE = 64;
+	char input_string[MAX_INPUT_STRING_SIZE];
+	snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s", ctrl_down ? "C-" : "", shift_down ? "S-" : "", alt_down ? "M-" : "");
+	mpack_write_cstr(&writer, input_string);
+
+	mpack_write_i64(&writer, 0);
+	mpack_write_i64(&writer, mouse_row);
+	mpack_write_i64(&writer, mouse_col);
+	mpack_finish_array(&writer);
+
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 	const char *key;
 	switch (virtual_key) {
-	case VK_SHIFT: {
-	} return;
-	case VK_CONTROL: {
-	} return;
-	case VK_MENU: {
-	} return;
 	case VK_BACK: {
 		key = "BS";
 	} break;
@@ -481,87 +553,10 @@ void NvimSendInput(Nvim *nvim, int virtual_key, int flags) {
 		key = "F24";
 	} break;
 	default: {
-		if(virtual_key > 0x20 && virtual_key <= 0x7F) {
-			const char input[2] = { static_cast<char>(virtual_key), '\0' };
-			NvimSendModifiedInput(nvim, input, true);
-		}
-	} return;
+	} return false;
 	}
 
 	NvimSendModifiedInput(nvim, key, true);
+	return true;
 }
 
-void NvimSendInput(Nvim *nvim, const char *input_chars) {
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-
-	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
-	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, input_chars);
-	mpack_finish_array(&writer);
-	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
-}
-
-void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col) {
-	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
-	mpack_writer_t writer;
-	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	MPackStartRequest(RegisterRequest(nvim, nvim_input_mouse), NVIM_REQUEST_NAMES[nvim_input_mouse], &writer);
-	mpack_start_array(&writer, 6);
-
-	switch (button) {
-	case MouseButton::Left: {
-		mpack_write_cstr(&writer, "left");
-	} break;
-	case MouseButton::Right: {
-		mpack_write_cstr(&writer, "right");
-	} break;
-	case MouseButton::Middle: {
-		mpack_write_cstr(&writer, "middle");
-	} break;
-	case MouseButton::Wheel: {
-		mpack_write_cstr(&writer, "wheel");
-	} break;
-	}
-	switch (action) {
-	case MouseAction::Press: {
-		mpack_write_cstr(&writer, "press");
-	} break;
-	case MouseAction::Drag: {
-		mpack_write_cstr(&writer, "drag");
-	} break;
-	case MouseAction::Release: {
-		mpack_write_cstr(&writer, "release");
-	} break;
-	case MouseAction::MouseWheelUp: {
-		mpack_write_cstr(&writer, "up");
-	} break;
-	case MouseAction::MouseWheelDown: {
-		mpack_write_cstr(&writer, "down");
-	} break;
-	case MouseAction::MouseWheelLeft: {
-		mpack_write_cstr(&writer, "left");
-	} break;
-	case MouseAction::MouseWheelRight: {
-		mpack_write_cstr(&writer, "right");
-	} break;
-	}
-
-	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
-	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
-	constexpr int MAX_INPUT_STRING_SIZE = 64;
-	char input_string[MAX_INPUT_STRING_SIZE];
-	snprintf(input_string, MAX_INPUT_STRING_SIZE, "%s%s%s", ctrl_down ? "C-" : "", shift_down ? "S-" : "", alt_down ? "M-" : "");
-	mpack_write_cstr(&writer, input_string);
-
-	mpack_write_i64(&writer, 0);
-	mpack_write_i64(&writer, mouse_row);
-	mpack_write_i64(&writer, mouse_col);
-	mpack_finish_array(&writer);
-
-	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
-}

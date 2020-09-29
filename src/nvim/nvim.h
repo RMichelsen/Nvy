@@ -58,7 +58,9 @@ void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_ou
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);
 void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols);
-void NvimSendInput(Nvim *nvim, wchar_t input_char);
+void NvimSendChar(Nvim *nvim, wchar_t input_char);
+void NvimSendSysChar(Nvim *nvim, wchar_t sys_char);
 void NvimSendInput(Nvim *nvim, const char* input_chars);
 void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);
+bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);

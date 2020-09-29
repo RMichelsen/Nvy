@@ -7,6 +7,7 @@ struct Context {
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
+	bool dead_char_pending;
 	bool xbuttons[2];
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
@@ -117,14 +118,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 		NvimSendResize(context->nvim, rows, cols);
 	} return 0;
+	case WM_DEADCHAR:
+	case WM_SYSDEADCHAR: {
+		context->dead_char_pending = true;
+	} return 0;
 	case WM_CHAR: {
+		context->dead_char_pending = false;
 		// Special case for <LT>
 		if (wparam == 0x3C) {
 			NvimSendInput(context->nvim, "<LT>");
+			return 0;
 		}
-		else if(wparam > 0x20 && wparam != 0x7F) {
-			NvimSendInput(context->nvim, static_cast<wchar_t>(wparam));
-		}
+		NvimSendChar(context->nvim, static_cast<wchar_t>(wparam));
+	} return 0;
+	case WM_SYSCHAR: {
+		context->dead_char_pending = false;
+		NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
 	} return 0;
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
@@ -133,10 +142,30 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else {
-			MSG peek;
-			PeekMessage(&peek, NULL, 0, 0, PM_NOREMOVE);
-			if(msg.message != WM_CHAR) {
-				NvimSendInput(context->nvim, static_cast<int>(wparam), static_cast<int>(lparam));
+			LONG msg_pos = GetMessagePos();
+			POINTS pt = MAKEPOINTS(msg_pos);
+			MSG current_msg {
+				.hwnd = hwnd,
+				.message = msg,
+				.wParam = wparam,
+				.lParam = lparam,
+				.time = static_cast<DWORD>(GetMessageTime()),
+				.pt = POINT { pt.x, pt.y }
+			};
+
+			if(context->dead_char_pending) {
+				if(static_cast<int>(wparam) == VK_SPACE ||
+				   static_cast<int>(wparam) == VK_BACK  ||
+				   static_cast<int>(wparam) == VK_ESCAPE) {
+					context->dead_char_pending = false;
+					TranslateMessage(&current_msg);
+					return 0;
+				}
+			}
+
+			// If none of the special keys were hit, process in WM_CHAR
+			if(!NvimProcessKeyDown(context->nvim, static_cast<int>(wparam))) {
+				TranslateMessage(&current_msg);
 			}
 		}
 	} return 0;
@@ -239,17 +268,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void OpenConsole() {	
-	FILE *dummy;	
-	AllocConsole();	
-	freopen_s(&dummy, "CONIN$", "r", stdin);	
-	freopen_s(&dummy, "CONOUT$", "w", stdout);	
-	freopen_s(&dummy, "CONOUT$", "w", stderr);	
-}
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	OpenConsole();
 
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
@@ -336,7 +356,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	
 	MSG msg;
 	while (GetMessage(&msg, 0, 0, 0)) {
-		TranslateMessage(&msg);
+		// TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
 
