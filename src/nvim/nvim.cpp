@@ -282,7 +282,7 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 }
 
 void NvimSendChar(Nvim *nvim, wchar_t input_char) {
-	char utf8_encoded[64]{};
+	char utf8_encoded[64];
 	int length = WideCharToMultiByte(GetACP(), 0, &input_char, 1, 0, 0, NULL, NULL);
 	if(length == 0) {
 		return;
