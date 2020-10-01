@@ -24,6 +24,15 @@ Nvy can be started with the following flags:
 Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
 
 # Build & Dependencies
-Building should be straight forward, there are no external dependencies.\
+Nvy should build with any compiler supporting `C++20`. There are no external dependencies.\
 The only dependency Nvy uses is the excellent [MPack](https://github.com/ludocode/mpack) library
 which is compiled alongside the client itself.
+
+Build example with [Ninja](https://ninja-build.org/)\
+`git clone https://github.com/RMichelsen/Nvy.git`\
+`cd Nvy`\
+`mkdir build`\
+`cd build`\
+`cmake .. -GNinja`\
+`ninja`
+
