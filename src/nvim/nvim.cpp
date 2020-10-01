@@ -282,9 +282,8 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 }
 
 void NvimSendChar(Nvim *nvim, wchar_t input_char) {
-	char utf8_encoded[64];
-	int length = WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL);
-	if(length == 0) {
+	char utf8_encoded[64]{};
+	if(!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
 		return;
 	}
 	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
@@ -294,7 +293,7 @@ void NvimSendChar(Nvim *nvim, wchar_t input_char) {
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
 	MPackStartRequest(RegisterRequest(nvim, nvim_input), NVIM_REQUEST_NAMES[nvim_input], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_str(&writer, utf8_encoded, length);
+	mpack_write_cstr(&writer, utf8_encoded);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
@@ -396,9 +395,6 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 	} break;
 	case VK_RETURN: {
 		key = "CR";
-	} break;
-	case VK_SPACE: {
-		key = "Space";
 	} break;
 	case VK_ESCAPE: {
 		key = "Esc";
