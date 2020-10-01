@@ -283,11 +283,11 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 
 void NvimSendChar(Nvim *nvim, wchar_t input_char) {
 	char utf8_encoded[64];
-	int length = WideCharToMultiByte(GetACP(), 0, &input_char, 1, 0, 0, NULL, NULL);
+	int length = WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL);
 	if(length == 0) {
 		return;
 	}
-	WideCharToMultiByte(GetACP(), 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
@@ -302,10 +302,10 @@ void NvimSendChar(Nvim *nvim, wchar_t input_char) {
 
 void NvimSendSysChar(Nvim *nvim, wchar_t input_char) {
 	char utf8_encoded[64]{};
-	if(WideCharToMultiByte(GetACP(), 0, &input_char, 1, 0, 0, NULL, NULL) == 0) {
+	if(WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL) == 0) {
 		return;
 	}
-	WideCharToMultiByte(GetACP(), 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
 
 	NvimSendModifiedInput(nvim, utf8_encoded, true);
 }
