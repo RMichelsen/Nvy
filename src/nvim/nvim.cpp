@@ -282,6 +282,13 @@ void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
 }
 
 void NvimSendChar(Nvim *nvim, wchar_t input_char) {
+	// If the space is simply a regular space,
+	// simply send the modified input
+	if(input_char == VK_SPACE) {
+		NvimSendModifiedInput(nvim, "Space", true);
+		return;
+	}
+
 	char utf8_encoded[64]{};
 	if(!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
 		return;
@@ -301,7 +308,7 @@ void NvimSendChar(Nvim *nvim, wchar_t input_char) {
 
 void NvimSendSysChar(Nvim *nvim, wchar_t input_char) {
 	char utf8_encoded[64]{};
-	if(WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL) == 0) {
+	if(!WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, 0, 0, NULL, NULL)) {
 		return;
 	}
 	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
