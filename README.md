@@ -23,16 +23,18 @@ Nvy can be started with the following flags:
 # Releases
 Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
 
-# Build & Dependencies
-Nvy should build with any compiler supporting `C++20`. There are no external dependencies.\
-The only dependency Nvy uses is the excellent [MPack](https://github.com/ludocode/mpack) library
+# Build
+## Requirements
+- A compiler supporting `C++20`
+- [The latest Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk/)
+
+Apart from the Windows SDK, the only dependency Nvy uses is the excellent [MPack](https://github.com/ludocode/mpack) library
 which is compiled alongside the client itself.
 
-Build example with [Ninja](https://ninja-build.org/)\
+## Build example with [Ninja](https://ninja-build.org/)
 `git clone https://github.com/RMichelsen/Nvy.git`\
 `cd Nvy`\
 `mkdir build`\
 `cd build`\
 `cmake .. -GNinja`\
 `ninja`
-
