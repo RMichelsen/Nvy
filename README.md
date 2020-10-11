@@ -1,7 +1,8 @@
 # Nvy
 Nvy is a minimal [Neovim](https://neovim.io/) client for Windows written in C++.
-It uses DirectWrite to shape and render the grid cells and text.
-
+It uses DirectWrite to shape and render the grid cells and text.\
+An installation of [Neovim](https://neovim.io/) is required to use Nvy, preferably the
+latest nightly version, from [here](https://github.com/neovim/neovim/releases)
 
 ![](resources/client.png)
 
