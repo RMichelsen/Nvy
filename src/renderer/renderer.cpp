@@ -833,6 +833,11 @@ void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {
 }
 
 void ClearGrid(Renderer *renderer) {
+	// Initialize all grid character to a space.
+	for (int i = 0; i < renderer->grid_cols * renderer->grid_rows; ++i) {
+		renderer->grid_chars[i] = L' ';
+	}
+	memset(renderer->grid_cell_properties, 0, renderer->grid_cols * renderer->grid_rows * sizeof(CellProperty));
 	D2D1_RECT_F rect {
 		.left = 0.0f,
 		.top = 0.0f,
@@ -919,6 +924,10 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			UpdateCursorModeInfos(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "mode_change")) {
+			// Redraw cursor if its inside the bounds
+			if(renderer->cursor.row < renderer->grid_rows) {
+				DrawGridLine(renderer, renderer->cursor.row);
+			}
 			UpdateCursorMode(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "busy_start")) {
