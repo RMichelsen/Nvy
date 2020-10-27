@@ -160,7 +160,7 @@ void HandleDeviceLost(Renderer *renderer) {
 void RendererInitialize(Renderer *renderer, HWND hwnd) {
 	renderer->hwnd = hwnd;
 
-	renderer->dpi_scale = GetDpiFromDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) / 96.0f;
+	renderer->dpi_scale = GetDpiForSystem() / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
 	InitializeD2D(renderer);
