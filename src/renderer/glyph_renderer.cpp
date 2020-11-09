@@ -181,7 +181,7 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 		.left = baseline_origin_x,
 		.top = baseline_origin_y + underline->offset,
 		.right = baseline_origin_x + underline->width,
-		.bottom = baseline_origin_y + underline->offset + underline->thickness
+		.bottom = baseline_origin_y + underline->offset + max(underline->thickness, 1.0f)
 	};
 
     renderer->d2d_context->FillRectangle(rect, temp_brush);
