@@ -16,10 +16,13 @@ Note: you have to specify the font size, e.g. `set guifont=Fira\ Code` won't wor
 Nvy can be started with the following flags:
 - `--maximize` to start in fullscreen
 - `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
+- `--disable-ligatures` to disable font ligatures
+- `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
 
 # Extra Features
 - You can use Alt+Enter to toggle fullscreen
 - You can use Ctrl+Mousewheel to zoom
+- You can drag files onto Nvy to open them
 
 # Releases
 Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
