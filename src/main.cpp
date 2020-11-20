@@ -266,8 +266,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	} return 0;
 	case WM_DROPFILES: {
 		char file_to_open[MAX_PATH];
-		DragQueryFileA(reinterpret_cast<HDROP>(wparam), 0, file_to_open, MAX_PATH);
-		NvimOpenFile(context->nvim, file_to_open);
+		uint32_t num_files = DragQueryFileA(reinterpret_cast<HDROP>(wparam), 0xFFFFFFFF, file_to_open, MAX_PATH);
+		for(int i = 0; i < num_files; ++i) {
+			DragQueryFileA(reinterpret_cast<HDROP>(wparam), i, file_to_open, MAX_PATH);
+			NvimOpenFile(context->nvim, file_to_open);
+		}
 	} return 0;
 	}
 
