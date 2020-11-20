@@ -4,13 +4,15 @@ enum NvimRequest : uint8_t {
 	vim_get_api_info = 0,
 	nvim_input = 1,
 	nvim_input_mouse = 2,
-	nvim_eval = 3
+	nvim_eval = 3,
+	nvim_command = 4
 };
 constexpr const char *NVIM_REQUEST_NAMES[] {
 	"nvim_get_api_info",
 	"nvim_input",
 	"nvim_input_mouse",
-	"nvim_eval"
+	"nvim_eval",
+	"nvim_command"
 };
 enum NvimOutboundNotification : uint8_t {
 	nvim_ui_attach = 0,
@@ -64,3 +66,4 @@ void NvimSendInput(Nvim *nvim, const char* input_chars);
 void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);
 bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);
+void NvimOpenFile(Nvim *nvim, const char *file_name);

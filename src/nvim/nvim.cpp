@@ -564,3 +564,18 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 	return true;
 }
 
+void NvimOpenFile(Nvim *nvim, const char *file_name) {
+	char file_command[MAX_PATH + 2] = {};
+	strcpy_s(file_command, MAX_PATH, "e ");
+	strcat_s(file_command, MAX_PATH - 3, file_name);
+
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_command), NVIM_REQUEST_NAMES[nvim_command], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, file_command);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}

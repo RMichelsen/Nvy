@@ -77,7 +77,8 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
 		} break;
         case NvimRequest::nvim_input:
-        case NvimRequest::nvim_input_mouse: {
+        case NvimRequest::nvim_input_mouse:
+        case NvimRequest::nvim_command: {
         } break;
 		}
 	}
@@ -263,6 +264,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			}
 		}
 	} return 0;
+	case WM_DROPFILES: {
+		char file_to_open[MAX_PATH];
+		DragQueryFileA(reinterpret_cast<HDROP>(wparam), 0, file_to_open, MAX_PATH);
+		NvimOpenFile(context->nvim, file_to_open);
+	} return 0;
 	}
 
 	return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -274,11 +280,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
 	bool start_maximized = false;
+	bool disable_ligatures = false;
+	float linespace_factor = 1.0f;
 	int64_t rows = 0;
 	int64_t cols = 0;
 
 	constexpr int MAX_NVIM_CMD_LINE_SIZE = 32767;
-	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE];
+	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
 	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
 	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
 
@@ -287,19 +295,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
 			start_maximized = true;
 		}
+		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {
+			disable_ligatures = true;
+		}
 		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
 			wchar_t *end_ptr;
 			cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
 			rows = wcstol(end_ptr + 1, nullptr, 10);
 		}
+		else if(!wcsncmp(cmd_line_args[i], L"--linespace-factor=", wcslen(L"--linespace-factor="))) {
+			wchar_t *end_ptr;
+			float factor = wcstof(&cmd_line_args[i][19], &end_ptr);
+			if(factor > 0.0f && factor < 20.0f) {
+				linespace_factor = factor;
+			}
+		}
 		// Otherwise assume the argument is a filename to open
 		else {
 			size_t arg_size = wcslen(cmd_line_args[i]);
-			if(arg_size <= cmd_line_size_left) {
-				wcscat_s(nvim_command_line, cmd_line_size_left, L" ");
-				cmd_line_size_left -= 1;
+			if(arg_size <= (cmd_line_size_left + 3)) {
+				wcscat_s(nvim_command_line, cmd_line_size_left, L" \"");
+				cmd_line_size_left -= 2;
 				wcscat_s(nvim_command_line, cmd_line_size_left, cmd_line_args[i]);
 				cmd_line_size_left -= arg_size;
+				wcscat_s(nvim_command_line, cmd_line_size_left, L"\"");
+				cmd_line_size_left -= 1;
 			}
 		}
 	}
@@ -336,7 +356,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
 	};
 
-	HWND hwnd = CreateWindow(
+	HWND hwnd = CreateWindowEx(
+		WS_EX_ACCEPTFILES,
 		window_class_name,
 		window_title,
 		WS_OVERLAPPEDWINDOW,
@@ -351,7 +372,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	RendererInitialize(&renderer, hwnd);
+	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 	
 	MSG msg;

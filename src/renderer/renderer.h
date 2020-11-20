@@ -84,6 +84,11 @@ struct Renderer {
 	IDWriteFactory4 *dwrite_factory;
 	IDWriteTextFormat *dwrite_text_format;
 
+	bool disable_ligatures;
+	IDWriteTypography *dwrite_typography;
+
+	float linespace_factor;
+
     float last_requested_font_size;
 	wchar_t font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
@@ -105,7 +110,7 @@ struct Renderer {
 	bool ui_busy;
 };
 
-void RendererInitialize(Renderer *renderer, HWND hwnd);
+void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor);
 void RendererAttach(Renderer *renderer);
 void RendererShutdown(Renderer *renderer);
 

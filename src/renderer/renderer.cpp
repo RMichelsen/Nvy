@@ -44,6 +44,13 @@ void InitializeD3D(Renderer *renderer) {
 
 void InitializeDWrite(Renderer *renderer) {
 	WIN_CHECK(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory4), reinterpret_cast<IUnknown **>(&renderer->dwrite_factory)));
+	if(renderer->disable_ligatures) {
+		WIN_CHECK(renderer->dwrite_factory->CreateTypography(&renderer->dwrite_typography));
+		WIN_CHECK(renderer->dwrite_typography->AddFontFeature(DWRITE_FONT_FEATURE {
+			.nameTag = DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
+			.parameter = 0		
+		}));
+	}
 }
 
 void HandleDeviceLost(Renderer *renderer);
@@ -157,8 +164,10 @@ void HandleDeviceLost(Renderer *renderer) {
 	);
 }
 
-void RendererInitialize(Renderer *renderer, HWND hwnd) {
+void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor) {
 	renderer->hwnd = hwnd;
+	renderer->disable_ligatures = disable_ligatures;
+	renderer->linespace_factor = linespace_factor;
 
 	renderer->dpi_scale = GetDpiForSystem() / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
@@ -278,6 +287,7 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
     renderer->font_ascent = ceilf(frac_font_ascent + half_linegap);
     renderer->font_descent = ceilf(frac_font_descent + half_linegap);
     renderer->font_height = renderer->font_ascent + renderer->font_descent;
+    renderer->font_height *= renderer->linespace_factor;
 
 	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
@@ -290,7 +300,7 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 		&renderer->dwrite_text_format
 	));
 
-	WIN_CHECK(renderer->dwrite_text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height, renderer->font_ascent));
+	WIN_CHECK(renderer->dwrite_text_format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, renderer->font_height, renderer->font_ascent * renderer->linespace_factor));
 	WIN_CHECK(renderer->dwrite_text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
 	WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
@@ -525,6 +535,12 @@ void DrawGridLine(Renderer *renderer, int row) {
 	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset, renderer->grid_cols);
 
 	renderer->d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
+	if(renderer->disable_ligatures) {
+		text_layout->SetTypography(renderer->dwrite_typography, DWRITE_TEXT_RANGE { 
+			.startPosition = 0, 
+			.length = static_cast<uint32_t>(renderer->grid_cols) 
+		});
+	}
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
 	renderer->d2d_context->PopAxisAlignedClip();
 	text_layout->Release();
