@@ -40,6 +40,7 @@ target_link_libraries(Nvy PUBLIC
     d3d11.lib 
     d2d1.lib 
     dwrite.lib
+    Shcore.lib
 )
 
 target_precompile_headers(Nvy PUBLIC
