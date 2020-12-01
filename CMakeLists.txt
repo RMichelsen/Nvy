@@ -54,6 +54,8 @@ target_precompile_headers(Nvy PUBLIC
     <d2d1_3.h>
     <d2d1_3helper.h>
     <dwrite_3.h>
+    <shellscalingapi.h>
+    <dwmapi.h>
     
     "src/third_party/mpack/mpack.h"
 

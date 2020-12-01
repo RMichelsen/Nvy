@@ -1,7 +1,5 @@
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
-#include <shellscalingapi.h>
-#include <dwmapi.h>
 
 struct Context {
 	GridSize start_grid_size;
@@ -117,19 +115,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		UINT current_dpi = 0;
 		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
 		if (current_dpi != context->saved_dpi_scaling) {
-			float dpiScale = (float)current_dpi / (float)context->saved_dpi_scaling;
+			float dpi_scale = static_cast<float>(current_dpi) / static_cast<float>(context->saved_dpi_scaling);
 			GetWindowRect(hwnd, &window_rect); // Window RECT with shadows
-			int new_window_width = (window_rect.right - window_rect.left) * dpiScale + 0.5f;
-			int new_window_height = (window_rect.bottom - window_rect.top) * dpiScale + 0.5f;
+			int new_window_width = (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
+			int new_window_height = (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
 
 			// Make sure window is not larger than the actual monitor
-			MONITORINFO MonitorInfo;
-			MonitorInfo.cbSize = sizeof(MonitorInfo);
-			GetMonitorInfo(monitor, &MonitorInfo);
-			uint32_t MonitorWidth = MonitorInfo.rcWork.right - MonitorInfo.rcWork.left;
-			uint32_t MonitorHeight = MonitorInfo.rcWork.bottom - MonitorInfo.rcWork.top;
-			if (new_window_width > MonitorWidth) new_window_width = MonitorWidth;
-			if (new_window_height > MonitorHeight) new_window_height = MonitorHeight;
+			MONITORINFO monitor_info;
+			monitor_info.cbSize = sizeof(monitor_info);
+			GetMonitorInfo(monitor, &monitor_info);
+			uint32_t monitor_width = monitor_info.rcWork.right - monitor_info.rcWork.left;
+			uint32_t monitor_height = monitor_info.rcWork.bottom - monitor_info.rcWork.top;
+			if (new_window_width > monitor_width) new_window_width = monitor_width;
+			if (new_window_height > monitor_height) new_window_height = monitor_height;
 
 			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
