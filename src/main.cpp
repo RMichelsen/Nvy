@@ -133,7 +133,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
 			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 
-			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size * dpiScale);
+			context->renderer->dpi_scale = current_dpi / 96.0f;
+			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
