@@ -41,6 +41,7 @@ target_link_libraries(Nvy PUBLIC
     d2d1.lib 
     dwrite.lib
     Shcore.lib
+    Dwmapi.lib
 )
 
 target_precompile_headers(Nvy PUBLIC

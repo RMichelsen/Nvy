@@ -1,6 +1,7 @@
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
 #include <shellscalingapi.h>
+#include <dwmapi.h>
 
 struct Context {
 	GridSize start_grid_size;
@@ -110,15 +111,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 	} return 0;
 	case WM_MOVE: {
-		HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+		RECT window_rect;
+		DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT)); // Get window position without shadows
+		HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
 		UINT current_dpi = 0;
 		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
 		if (current_dpi != context->saved_dpi_scaling) {
 			float dpiScale = (float)context->saved_dpi_scaling / (float)current_dpi;
-			RECT window_rect;
-			GetWindowRect(hwnd, &window_rect);
-			int new_window_width = (window_rect.right - window_rect.left) * dpiScale;
-			int new_window_height = (window_rect.bottom - window_rect.top) * dpiScale;
+			GetWindowRect(hwnd, &window_rect); // Window RECT with shadows
+			int new_window_width = (window_rect.right - window_rect.left) * dpiScale + 0.5f;
+			int new_window_height = (window_rect.bottom - window_rect.top) * dpiScale + 0.5f;
 			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 			context->saved_dpi_scaling = current_dpi;
 		}
@@ -391,7 +393,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+	RECT window_rect;
+	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
+	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
 	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling), &(context.saved_dpi_scaling));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
