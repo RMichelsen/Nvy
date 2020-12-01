@@ -121,6 +121,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			GetWindowRect(hwnd, &window_rect); // Window RECT with shadows
 			int new_window_width = (window_rect.right - window_rect.left) * dpiScale + 0.5f;
 			int new_window_height = (window_rect.bottom - window_rect.top) * dpiScale + 0.5f;
+
+			// Make sure window is not larger than the actual monitor
+			MONITORINFO MonitorInfo;
+			MonitorInfo.cbSize = sizeof(MonitorInfo);
+			GetMonitorInfo(monitor, &MonitorInfo);
+			uint32_t MonitorWidth = MonitorInfo.rcWork.right - MonitorInfo.rcWork.left;
+			uint32_t MonitorHeight = MonitorInfo.rcWork.bottom - MonitorInfo.rcWork.top;
+			if (new_window_width > MonitorWidth) new_window_width = MonitorWidth;
+			if (new_window_height > MonitorHeight) new_window_height = MonitorHeight;
+
 			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
 			context->saved_dpi_scaling = current_dpi;
 		}
