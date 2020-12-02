@@ -110,7 +110,7 @@ struct Renderer {
 	bool ui_busy;
 };
 
-void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor);
+void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor, float monitor_dpi);
 void RendererAttach(Renderer *renderer);
 void RendererShutdown(Renderer *renderer);
 

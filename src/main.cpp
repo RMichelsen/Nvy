@@ -11,6 +11,7 @@ struct Context {
 	bool xbuttons[2];
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
+	UINT saved_dpi_scaling;
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -105,6 +106,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer, new_width, new_height);
 			RendererResize(context->renderer, new_width, new_height);
 			NvimSendResize(context->nvim, rows, cols);
+		}
+	} return 0;
+	case WM_MOVE: {
+		RECT window_rect;
+		DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT)); // Get window position without shadows
+		HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
+		UINT current_dpi = 0;
+		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
+		if (current_dpi != context->saved_dpi_scaling) {
+			float dpi_scale = static_cast<float>(current_dpi) / static_cast<float>(context->saved_dpi_scaling);
+			GetWindowRect(hwnd, &window_rect); // Window RECT with shadows
+			int new_window_width = (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
+			int new_window_height = (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
+
+			// Make sure window is not larger than the actual monitor
+			MONITORINFO monitor_info;
+			monitor_info.cbSize = sizeof(monitor_info);
+			GetMonitorInfo(monitor, &monitor_info);
+			uint32_t monitor_width = monitor_info.rcWork.right - monitor_info.rcWork.left;
+			uint32_t monitor_height = monitor_info.rcWork.bottom - monitor_info.rcWork.top;
+			if (new_window_width > monitor_width) new_window_width = monitor_width;
+			if (new_window_height > monitor_height) new_window_height = monitor_height;
+
+			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
+
+			context->renderer->dpi_scale = current_dpi / 96.0f;
+			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
+			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
+				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
+			if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
+				NvimSendResize(context->nvim, rows, cols);
+			}
+
+			context->saved_dpi_scaling = current_dpi;
 		}
 	} return 0;
 	case WM_DESTROY: {
@@ -278,7 +313,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
-	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
@@ -375,7 +410,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor);
+	RECT window_rect;
+	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
+	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
+	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling), &(context.saved_dpi_scaling));
+	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 	
 	MSG msg;

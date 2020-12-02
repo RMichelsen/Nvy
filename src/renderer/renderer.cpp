@@ -164,12 +164,12 @@ void HandleDeviceLost(Renderer *renderer) {
 	);
 }
 
-void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor) {
+void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor, float monitor_dpi) {
 	renderer->hwnd = hwnd;
 	renderer->disable_ligatures = disable_ligatures;
 	renderer->linespace_factor = linespace_factor;
 
-	renderer->dpi_scale = GetDpiForSystem() / 96.0f;
+	renderer->dpi_scale = monitor_dpi / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
 	InitializeD2D(renderer);
