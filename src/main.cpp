@@ -12,6 +12,8 @@ struct Context {
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
 	UINT saved_dpi_scaling;
+	uint32_t saved_window_width;
+	uint32_t saved_window_height;
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -103,9 +105,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		if (wparam != SIZE_MINIMIZED) {
 			uint32_t new_width = LOWORD(lparam);
 			uint32_t new_height = HIWORD(lparam);
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer, new_width, new_height);
-			RendererResize(context->renderer, new_width, new_height);
-			NvimSendResize(context->nvim, rows, cols);
+			context->saved_window_height = new_height;
+			context->saved_window_width = new_width;
 		}
 	} return 0;
 	case WM_MOVE: {
@@ -418,9 +419,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 	
 	MSG msg;
+	uint32_t previous_width = 0, previous_height = 0;
 	while (GetMessage(&msg, 0, 0, 0)) {
 		// TranslateMessage(&msg);
 		DispatchMessage(&msg);
+		if (previous_width != context.saved_window_width || previous_height != context.saved_window_height) {
+			previous_width = context.saved_window_width;
+			previous_height = context.saved_window_height;
+			auto [rows, cols] = RendererPixelsToGridSize(context.renderer, context.saved_window_width, context.saved_window_height);
+			RendererResize(context.renderer, context.saved_window_width, context.saved_window_height);
+			NvimSendResize(context.nvim, rows, cols);
+		}
 	}
 
 	RendererShutdown(&renderer);
