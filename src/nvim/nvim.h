@@ -66,4 +66,4 @@ void NvimSendInput(Nvim *nvim, const char* input_chars);
 void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);
 bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);
-void NvimOpenFile(Nvim *nvim, const char *file_name);
+void NvimOpenFile(Nvim *nvim, const wchar_t *file_name);
