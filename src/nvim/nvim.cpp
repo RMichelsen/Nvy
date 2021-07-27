@@ -567,9 +567,6 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 void NvimOpenFile(Nvim *nvim, const wchar_t *file_name) {
 
 	char utf8_encoded[MAX_PATH]{};
-	//if(!WideCharToMultiByte(CP_UTF8, 0, file_name, 1, 0, 0, NULL, NULL)) {
-    //	return;
-	//}
 	WideCharToMultiByte(CP_UTF8, 0, file_name, -1, utf8_encoded, MAX_PATH, NULL, NULL);
 
 	char file_command[MAX_PATH + 2] = {};
