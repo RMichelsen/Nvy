@@ -583,3 +583,31 @@ void NvimOpenFile(Nvim *nvim, const wchar_t *file_name) {
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }
+
+void NvimSetFocus(Nvim *nvim) {
+	const char *set_focus_command = "doautocmd <nomodeline> FocusGained";
+
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_command), NVIM_REQUEST_NAMES[nvim_command], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, set_focus_command);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimKillFocus(Nvim *nvim) {
+	const char *set_focus_command = "doautocmd <nomodeline> FocusLost";
+
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_command), NVIM_REQUEST_NAMES[nvim_command], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, set_focus_command);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
