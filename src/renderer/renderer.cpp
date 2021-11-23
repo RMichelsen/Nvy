@@ -686,6 +686,24 @@ void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
 	renderer->cursor.col = MPackIntFromArray(cursor_goto_params, 2);
 }
 
+void UpdateImePos(Renderer* renderer) {
+	HIMC hIMC = ImmGetContext(renderer->hwnd);
+	COMPOSITIONFORM cf = { 0 };
+
+	cf.dwStyle = CFS_POINT;
+	cf.ptCurrentPos.x = renderer->cursor.col * renderer->font_width;
+	cf.ptCurrentPos.y = renderer->cursor.row * renderer->font_height;
+
+	if (ImmSetCompositionWindow(hIMC, &cf)) {
+		LOGFONTW lf = { 0 };
+		lf.lfHeight = static_cast<LONG>(renderer->font_height);
+		wcscpy_s(lf.lfFaceName, LF_FACESIZE, renderer->font);
+		ImmSetCompositionFontW(hIMC, &lf);
+	}
+
+	ImmReleaseContext(renderer->hwnd, hIMC);
+}
+
 void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
 	mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
 	renderer->cursor.mode_info = &renderer->cursor_mode_infos[mpack_node_array_at(mode_change_params, 1).data->value.u];
@@ -935,6 +953,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 				DrawGridLine(renderer, renderer->cursor.row);
 			}
 			UpdateCursorPos(renderer, redraw_command_arr);
+			UpdateImePos(renderer);
 		}
 		else if (MPackMatchString(redraw_command_name, "mode_info_set")) {
 			UpdateCursorModeInfos(renderer, redraw_command_arr);
