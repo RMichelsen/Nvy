@@ -687,21 +687,24 @@ void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
 }
 
 void UpdateImePos(Renderer* renderer) {
-	HIMC hIMC = ImmGetContext(renderer->hwnd);
-	COMPOSITIONFORM cf = { 0 };
+	HIMC input_context = ImmGetContext(renderer->hwnd);
+	COMPOSITIONFORM composition_form {
+		.dwStyle = CFS_POINT,
+		.ptCurrentPos = {
+			.x = static_cast<LONG>(renderer->cursor.col * renderer->font_width),
+			.y = static_cast<LONG>(renderer->cursor.row * renderer->font_height)
+		}
+	};
 
-	cf.dwStyle = CFS_POINT;
-	cf.ptCurrentPos.x = renderer->cursor.col * renderer->font_width;
-	cf.ptCurrentPos.y = renderer->cursor.row * renderer->font_height;
-
-	if (ImmSetCompositionWindow(hIMC, &cf)) {
-		LOGFONTW lf = { 0 };
-		lf.lfHeight = static_cast<LONG>(renderer->font_height);
-		wcscpy_s(lf.lfFaceName, LF_FACESIZE, renderer->font);
-		ImmSetCompositionFontW(hIMC, &lf);
+	if (ImmSetCompositionWindow(input_context, &composition_form)) {
+		LOGFONTW font_attribs {
+			.lfHeight = static_cast<LONG>(renderer->font_height)
+		};
+		wcscpy_s(font_attribs.lfFaceName, LF_FACESIZE, renderer->font);
+		ImmSetCompositionFontW(input_context, &font_attribs);
 	}
 
-	ImmReleaseContext(renderer->hwnd, hIMC);
+	ImmReleaseContext(renderer->hwnd, input_context);
 }
 
 void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
