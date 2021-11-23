@@ -42,6 +42,7 @@ target_link_libraries(Nvy PUBLIC
     dwrite.lib
     Shcore.lib
     Dwmapi.lib
+    imm32.lib
 )
 
 target_precompile_headers(Nvy PUBLIC
@@ -56,6 +57,7 @@ target_precompile_headers(Nvy PUBLIC
     <dwrite_3.h>
     <shellscalingapi.h>
     <dwmapi.h>
+    <imm.h>
     
     "src/third_party/mpack/mpack.h"
 
