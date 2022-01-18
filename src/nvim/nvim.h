@@ -51,6 +51,7 @@ struct Nvim {
 	HANDLE stdout_read;
 	HANDLE stdout_write;
 	PROCESS_INFORMATION process_info;
+	DWORD exit_code;
 };
 
 void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
