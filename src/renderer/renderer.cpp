@@ -714,8 +714,8 @@ void UpdateWindowTitle(Renderer *renderer, mpack_node_t set_title) {
 	const char *new_title = mpack_node_str(value);
 	int len = mpack_node_strlen(value);
 
-	// Append " - Nvy" to the title
-	const char *append = " - Nvy";
+	// Append " - Nvy" to the title. If title is empty, do not add " - ".
+	const char *append = len == 0 ? "Nvy" : " - Nvy";
 	size_t add_len = strlen(append);
 	size_t bytes = len + add_len; // No need for '\0'
 	char *buf = static_cast<char *>(malloc(bytes));
