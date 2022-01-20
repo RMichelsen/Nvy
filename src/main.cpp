@@ -443,5 +443,5 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
 
-	return 0;
+	return nvim.exit_code;
 }

@@ -50,6 +50,7 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param) {
 			Sleep(1);
 		}
 		else {
+			nvim->exit_code = exit_code;
 			break;
 		}
 	}
