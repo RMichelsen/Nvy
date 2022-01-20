@@ -707,6 +707,34 @@ void UpdateImePos(Renderer* renderer) {
 	ImmReleaseContext(renderer->hwnd, input_context);
 }
 
+void UpdateWindowTitle(Renderer *renderer, mpack_node_t set_title) {
+	// Get new title
+	mpack_node_t params = mpack_node_array_at(set_title, 1);
+	mpack_node_t value = mpack_node_array_at(params, 0);
+	const char *new_title = mpack_node_str(value);
+	int len = mpack_node_strlen(value);
+
+	// Append " - Nvy" to the title. If title is empty, do not add " - ".
+	const char *append = len == 0 ? "Nvy" : " - Nvy";
+	size_t add_len = strlen(append);
+	size_t bytes = len + add_len; // No need for '\0'
+	char *buf = static_cast<char *>(malloc(bytes));
+	memcpy(buf, new_title, len);
+	memcpy(buf + len, append, add_len);
+
+	// Convert to wide string
+	int wstrlen = MultiByteToWideChar(CP_UTF8, 0, buf, len + add_len, NULL, 0);
+	wchar_t *wbuf = static_cast<wchar_t *>(malloc((wstrlen + 1) * sizeof(wchar_t)));
+	MultiByteToWideChar(CP_UTF8, 0, buf, len + add_len, wbuf, wstrlen);
+	wbuf[wstrlen] = '\0';
+
+	// Update title bar text
+	SetWindowText(renderer->hwnd, wbuf);
+
+	free(buf);
+	free(wbuf);
+}
+
 void UpdateCursorMode(Renderer *renderer, mpack_node_t mode_change) {
 	mpack_node_t mode_change_params = mpack_node_array_at(mode_change, 1);
 	renderer->cursor.mode_info = &renderer->cursor_mode_infos[mpack_node_array_at(mode_change_params, 1).data->value.u];
@@ -967,6 +995,9 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 				DrawGridLine(renderer, renderer->cursor.row);
 			}
 			UpdateCursorMode(renderer, redraw_command_arr);
+		}
+		else if (MPackMatchString(redraw_command_name, "set_title")) {
+			UpdateWindowTitle(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "busy_start")) {
 			renderer->ui_busy = true;
