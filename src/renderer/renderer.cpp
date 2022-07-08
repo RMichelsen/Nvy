@@ -629,6 +629,7 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 }
 
 void DrawCursor(Renderer *renderer) {
+	if (!renderer->cursor.mode_info) return;
 	int cursor_grid_offset = renderer->cursor.row * renderer->grid_cols + renderer->cursor.col;
 
 	int double_width_char_factor = 1;
