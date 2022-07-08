@@ -638,6 +638,12 @@ void DrawCursor(Renderer *renderer) {
 	}
 
 	HighlightAttributes cursor_hl_attribs = renderer->hl_attribs[renderer->cursor.mode_info->hl_attrib_id];
+
+	// Inherit GUI options for char under cursor (like italic)
+	int hl_attrib_id_under_cursor = renderer->grid_cell_properties[cursor_grid_offset].hl_attrib_id;
+	HighlightAttributes under_cursor_hl_attribs = renderer->hl_attribs[hl_attrib_id_under_cursor];
+	cursor_hl_attribs.flags = under_cursor_hl_attribs.flags;
+
 	if (renderer->cursor.mode_info->hl_attrib_id == 0) {
 		cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
 	}
