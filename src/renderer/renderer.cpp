@@ -546,6 +546,10 @@ void DrawGridLine(Renderer *renderer, int row) {
 	text_layout->Release();
 }
 
+bool IsSurrogatePair(wchar_t left, wchar_t right) {
+	return (0xD800 <= left && left <= 0xDBFF) && (0xDC00 <= right && right <= 0xDFFF);
+}
+
 void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 	assert(renderer->grid_chars != nullptr);
 	assert(renderer->grid_cell_properties != nullptr);
@@ -583,13 +587,20 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 			if (strlen == 0) {
 				// This is the right part of the wide char. Sadly grid_line
 				// event can be splitted at the middle of wide character.
-				// TODO: Consider about surrogate pair.
-				renderer->grid_chars[offset] = L'\0';
+
+				// Be careful not to overwrite right half of surrogate pair.
+				// It never happens that offset == 0, since it is the right
+				// half of wide char, but add check for safety.
+				if (offset == 0 || !IsSurrogatePair(renderer->grid_chars[offset - 1], renderer->grid_chars[offset])) {
+					renderer->grid_chars[offset] = L'\0';
+				}
+
+				// This cell itself is not a wide character.
 				renderer->grid_cell_properties[offset].is_wide_char = false;
 
-				// Adjust properties. It never happens that offset == 0, since
-				// it is the right half of wide char, but adding check for
-				// safety.
+				// Adjust properties. Again it never happens that offset == 0,
+				// since it is the right half of wide char, but adding check
+				// for safety.
 				if (offset > 0) {
 					// Set is_wide_char flag for the left cell to true.
 					renderer->grid_cell_properties[offset - 1].is_wide_char = true;
@@ -613,7 +624,11 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 				// handle wide character specially.
 				for (int k = 0; k < repeat; ++k) {
 					int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[offset], grid_size - offset);
-					assert(wstrlen == 1 || (wstrlen == 2 && repeat == 1));
+					if (wstrlen == 2) {
+						// If the str takes two wchars, it must be a surrogate pair.
+						bool is_surrogate_pair = IsSurrogatePair(renderer->grid_chars[offset], renderer->grid_chars[offset + 1]);
+						assert(is_surrogate_pair && repeat == 1);
+					}
 					renderer->grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
 
 					// Here we set is_wide_char to be always false. This is
