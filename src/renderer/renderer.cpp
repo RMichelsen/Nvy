@@ -558,70 +558,74 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 		int row = MPackIntFromArray(grid_line, 1);
 		int col_start = MPackIntFromArray(grid_line, 2);
 
-		mpack_node_t cells_array = mpack_node_array_at(grid_line, 3);
-		size_t cells_array_length = mpack_node_array_length(cells_array);
+		mpack_node_t cell_array = mpack_node_array_at(grid_line, 3);
+		size_t cell_array_length = mpack_node_array_length(cell_array);
 
-		int col_offset = col_start;
 		int hl_attrib_id = 0;
-		for (size_t j = 0; j < cells_array_length; ++j) {
+		int offset = row * renderer->grid_cols + col_start;
+		for (size_t j = 0; j < cell_array_length; ++j) {
+			mpack_node_t cell = mpack_node_array_at(cell_array, j);
+			size_t cell_length = mpack_node_array_length(cell);
 
-			mpack_node_t cells = mpack_node_array_at(cells_array, j);
-			size_t cells_length = mpack_node_array_length(cells);
-
-			mpack_node_t text = mpack_node_array_at(cells, 0);
+			mpack_node_t text = mpack_node_array_at(cell, 0);
 			const char *str = mpack_node_str(text);
 
-			int strlen = static_cast<int>(mpack_node_strlen(text));
-
-			if (cells_length > 1) {
-				hl_attrib_id = MPackIntFromArray(cells, 1);
-			}
-
-			// Right part of double-width char is the empty string, thus
-			// if the next cell array contains the empty string, we can process
-			// the current string as a double-width char and proceed
-			if(j < (cells_array_length - 1) && 
-				mpack_node_strlen(mpack_node_array_at(mpack_node_array_at(cells_array, j + 1), 0)) == 0) {
-
-				int offset = row * renderer->grid_cols + col_offset;
-				renderer->grid_cell_properties[offset].is_wide_char = true;
-				renderer->grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
-				renderer->grid_cell_properties[offset + 1].hl_attrib_id = hl_attrib_id;
-
-				int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[offset], grid_size - offset);
-				assert(wstrlen == 1 || wstrlen == 2);
-
-				if (wstrlen == 1) {
-					renderer->grid_chars[offset + 1] = L'\0';
-				}
-
-				col_offset += 2;
-				continue;
-			}
-
-			if (strlen == 0) {
-				continue;
+			if (cell_length > 1) {
+				hl_attrib_id = MPackIntFromArray(cell, 1);
 			}
 
 			int repeat = 1;
-			if (cells_length > 2) {
-				repeat = MPackIntFromArray(cells, 2);
+			if (cell_length > 2) {
+				repeat = MPackIntFromArray(cell, 2);
 			}
 
-			int offset = row * renderer->grid_cols + col_offset;
-			int wstrlen = 0;
-			for (int k = 0; k < repeat; ++k) {
-				int idx = offset + (k * wstrlen);
-				wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[idx], grid_size - idx);
-			}
+			int strlen = static_cast<int>(mpack_node_strlen(text));
+			if (strlen == 0) {
+				// This is the right part of the wide char. Sadly grid_line
+				// event can be splitted at the middle of wide character.
+				// TODO: Consider about surrogate pair.
+				renderer->grid_chars[offset] = L'\0';
+				renderer->grid_cell_properties[offset].is_wide_char = false;
 
-			int wstrlen_with_repetitions = wstrlen * repeat;
-			for (int k = 0; k < wstrlen_with_repetitions; ++k) {
-				renderer->grid_cell_properties[offset + k].hl_attrib_id = hl_attrib_id;
-				renderer->grid_cell_properties[offset + k].is_wide_char = false;
-			}
+				// Adjust properties. It never happens that offset == 0, since
+				// it is the right half of wide char, but adding check for
+				// safety.
+				if (offset > 0) {
+					// Set is_wide_char flag for the left cell to true.
+					renderer->grid_cell_properties[offset - 1].is_wide_char = true;
 
-			col_offset += wstrlen_with_repetitions;
+					// Inherit hl_attrib_id from left half.
+					renderer->grid_cell_properties[offset].hl_attrib_id = renderer->grid_cell_properties[offset - 1].hl_attrib_id;
+				}
+
+				++offset;
+			} else {
+				// This is single width character or left half cell of wide
+				// character.
+
+				// Left cell should not be a wide character, so reset the
+				// flag. This time checking offset > 0 is mandatory.
+				if (offset > 0) {
+					renderer->grid_cell_properties[offset - 1].is_wide_char = false;
+				}
+
+				// Wide character will never be repeated, so we don't have to
+				// handle wide character specially.
+				for (int k = 0; k < repeat; ++k) {
+					int wstrlen = MultiByteToWideChar(CP_UTF8, 0, str, strlen, &renderer->grid_chars[offset], grid_size - offset);
+					assert(wstrlen == 1 || (wstrlen == 2 && repeat == 1));
+					renderer->grid_cell_properties[offset].hl_attrib_id = hl_attrib_id;
+
+					// Here we set is_wide_char to be always false. This is
+					// because if it is actually a wide character, then the
+					// right half of the char, empty string, should be appear
+					// soon, and the flag will be set there (first branch of
+					// this `if`).
+					renderer->grid_cell_properties[offset].is_wide_char = false;
+
+					++offset;
+				}
+			}
 		}
 
 		DrawGridLine(renderer, row);
