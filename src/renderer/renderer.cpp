@@ -948,7 +948,7 @@ void CopyFrontToBack(Renderer *renderer) {
 void FinishDraw(Renderer *renderer) {
 	renderer->d2d_context->EndDraw();
 
-	HRESULT hr = renderer->dxgi_swapchain->Present(0, 0);
+	HRESULT hr = renderer->dxgi_swapchain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
 	renderer->draw_active = false;
 
 	CopyFrontToBack(renderer);
