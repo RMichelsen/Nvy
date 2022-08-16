@@ -612,3 +612,17 @@ void NvimKillFocus(Nvim *nvim) {
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }
+void NvimQuit(Nvim *nvim)
+{
+	const char *quit_command = "q";
+
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_command), NVIM_REQUEST_NAMES[nvim_command], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, quit_command);
+	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}

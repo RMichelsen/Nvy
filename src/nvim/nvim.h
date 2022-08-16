@@ -70,3 +70,4 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);
 void NvimOpenFile(Nvim *nvim, const wchar_t *file_name);
 void NvimSetFocus(Nvim *nvim);
 void NvimKillFocus(Nvim *nvim);
+void NvimQuit(Nvim *nvim);
