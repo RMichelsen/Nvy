@@ -385,6 +385,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
+	BOOL should_use_dark_mode = ShouldUseDarkMode();
+	HBRUSH bg_brush = CreateSolidBrush(should_use_dark_mode ? 0x00202020 : 0x00FFFFFF);
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
 		.style = CS_HREDRAW | CS_VREDRAW,
@@ -392,7 +394,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.hInstance = instance,
         .hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
-		.hbrBackground = nullptr,
+		.hbrBackground = bg_brush,
 		.lpszClassName = window_class_name,
         .hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
 	};
@@ -435,7 +437,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
 	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
 	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling), &(context.saved_dpi_scaling));
-	BOOL should_use_dark_mode = ShouldUseDarkMode();
+	constexpr int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &should_use_dark_mode, sizeof(BOOL));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
@@ -457,6 +459,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
+	DeleteObject(bg_brush);
 	DestroyWindow(hwnd);
 
 	return nvim.exit_code;
