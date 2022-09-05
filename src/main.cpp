@@ -314,6 +314,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_KILLFOCUS: {
 		NvimKillFocus(context->nvim);
 	} return 0;
+	case WM_CLOSE : {
+		NvimQuit(context->nvim);
+	} return 0;
 	}
 
 	return DefWindowProc(hwnd, msg, wparam, lparam);
