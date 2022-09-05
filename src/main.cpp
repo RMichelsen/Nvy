@@ -336,8 +336,9 @@ BOOL ShouldUseDarkMode()
 	return false;
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
+int main(int argc, char **argv) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+	HINSTANCE instance = GetModuleHandle(NULL);
 
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
@@ -352,9 +353,20 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
 	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
 
+
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
-		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
+		if(!wcscmp(cmd_line_args[i], L"--help")) {
+			printf("Usage:\n");
+			printf("Nvy file [--option]\n");
+			printf("Nvy --maximize\n  to start in fullscreen\n");
+			printf("Nvy --geometry=<cols>x<rows>\n  to start with a given number of rows and columns, e.g. --geometry=80x25\n");
+			printf("Nvy --disable-ligatures\n  to disable font ligatures\n");
+			printf("Nvy --linespace-factor=<float>\n  to scale the line spacing by a floating point factor, e.g. --linespace-factor=1.2\n");
+			printf("Nvy --help\n  to show this menu\n");
+			return 1;
+		}
+		else if(!wcscmp(cmd_line_args[i], L"--maximize")) {
 			start_maximized = true;
 		}
 		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {

@@ -18,6 +18,7 @@ Nvy can be started with the following flags:
 - `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
 - `--disable-ligatures` to disable font ligatures
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
+- `--help` to show the help menu
 
 # Extra Features
 - You can use Alt+Enter to toggle fullscreen
