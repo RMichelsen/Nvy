@@ -172,6 +172,8 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, f
 	renderer->dpi_scale = monitor_dpi / 96.0f;
     renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
+    wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
+
 	InitializeD2D(renderer);
 	InitializeD3D(renderer);
 	InitializeDWrite(renderer);
@@ -247,10 +249,14 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	BOOL exists;
 	font_collection->FindFamilyName(renderer->font, &index, &exists);
 
-    const wchar_t *fallback_font = L"Consolas";
 	if (!exists) {
-		font_collection->FindFamilyName(fallback_font, &index, &exists);
-        memcpy(renderer->font, fallback_font, (wcslen(fallback_font) + 1) * sizeof(wchar_t));
+		font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
+        // Reset fallback font if it doesn't exist
+        if (!exists) {
+            wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
+            font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
+        }
+        memcpy(renderer->font, renderer->fallback_font, (wcslen(renderer->fallback_font) + 1) * sizeof(wchar_t));
 	}
 
 	IDWriteFontFamily *font_family;
@@ -893,6 +899,20 @@ void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strle
 	size_t font_str_len = size_str - guifont;
 	size_t size_str_len = strlen - (font_str_len + 2);
 	size_str += 2;
+
+    const char *fallback_font_str = strstr(size_str, ":");
+    if(fallback_font_str) {
+        fallback_font_str += 1;
+        size_t fallback_font_str_len = strlen - (fallback_font_str - guifont);
+
+        int wstrlen = MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, 0, 0);
+        if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH) {
+            MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, renderer->fallback_font, MAX_FONT_LENGTH - 1);
+            renderer->fallback_font[wstrlen] = L'\0';
+        }
+
+        size_str_len -= fallback_font_str_len;
+    }
 
 	float font_size = DEFAULT_FONT_SIZE;
 	// Assume font size part of string is less than 256 characters
