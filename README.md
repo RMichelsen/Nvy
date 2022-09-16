@@ -11,13 +11,15 @@ Nvy sets the global vim variable `g:nvy = 1` in case you want to specialize your
 
 Fonts can be changed by setting the guifont in `init.vim`, for example:
 `set guifont=Fira\ Code:h24`. <br>
-Note: you have to specify the font size, e.g. `set guifont=Fira\ Code` won't work.
+Note: you have to specify the font size, e.g. `set guifont=Fira\ Code` won't work. <br>
+A fallback font can be specified by appending it, e.g. `set guifont=Fira\ Code:h24:Consolas` to set Consolas as the fallback font.
 
 Nvy can be started with the following flags:
 - `--maximize` to start in fullscreen
 - `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
 - `--disable-ligatures` to disable font ligatures
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
+- `--help` to show the help menu
 
 # Extra Features
 - You can use Alt+Enter to toggle fullscreen

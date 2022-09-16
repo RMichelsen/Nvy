@@ -309,6 +309,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		uint32_t num_files = DragQueryFileW(reinterpret_cast<HDROP>(wparam), 0xFFFFFFFF, file_to_open, MAX_PATH);
 		for(int i = 0; i < num_files; ++i) {
 			DragQueryFileW(reinterpret_cast<HDROP>(wparam), i, file_to_open, MAX_PATH);
+
+			// Click left mouse button to ensure file is opened in the appropriate neovim split
+			POINT screen_point;
+			GetCursorPos(&screen_point);
+			POINT client_point {
+				.x = static_cast<LONG>(screen_point.x),
+				.y = static_cast<LONG>(screen_point.y),
+			};
+			ScreenToClient(hwnd, &client_point);
+			auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
+			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Press, row, col);
+			NvimSendMouseInput(context->nvim, MouseButton::Left, MouseAction::Release, row, col);
+
+			// Not the most elegant solution, but must wait for mouseclick to be registered with nvim
+			Sleep(10);
+
 			NvimOpenFile(context->nvim, file_to_open);
 		}
 	} return 0;
@@ -355,6 +371,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
 	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
 	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
+
 
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
