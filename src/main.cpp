@@ -166,6 +166,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			NvimSendInput(context->nvim, "<LT>");
 			return 0;
 		}
+		if (wparam == 0x00) {
+			NvimSendInput(context->nvim, "<Nul>");
+			return 0;
+		}
 		NvimSendChar(context->nvim, static_cast<wchar_t>(wparam));
 	} return 0;
 	case WM_SYSCHAR: {
