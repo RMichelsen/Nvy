@@ -173,8 +173,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		NvimSendChar(context->nvim, static_cast<wchar_t>(wparam));
 	} return 0;
 	case WM_SYSCHAR: {
-		context->dead_char_pending = false;
-		NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
+		if (static_cast<int>(wparam) == VK_SPACE) {
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+		else {
+			context->dead_char_pending = false;
+			NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
+		}
 	} return 0;
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
