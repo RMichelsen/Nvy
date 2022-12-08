@@ -278,14 +278,34 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
     int32_t glyph_advance_in_em;
     WIN_CHECK(renderer->font_face->GetDesignGlyphAdvances(1, &glyph_index, &glyph_advance_in_em));
 
+	IDWriteFont* write_font_bold;
+	WIN_CHECK(font_family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &write_font_bold));
+
+	IDWriteFontFace* font_face_bold;
+	WIN_CHECK(write_font_bold->CreateFontFace(&font_face_bold));
+	IDWriteFontFace1* font_size_scale_bold1;
+	WIN_CHECK(font_face_bold->QueryInterface<IDWriteFontFace1>(&font_size_scale_bold1));
+	DWRITE_FONT_METRICS1 font_metrics_bold;
+	font_size_scale_bold1->GetMetrics(&font_metrics_bold);
+
+	int32_t glyph_advance_in_em_bold;
+	WIN_CHECK(font_size_scale_bold1->GetDesignGlyphAdvances(1, &glyph_index, &glyph_advance_in_em_bold));
+
     float desired_height = font_size * renderer->dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
     float width_advance = static_cast<float>(glyph_advance_in_em) / renderer->font_metrics.designUnitsPerEm;
     float desired_width = desired_height * width_advance;
 
+	float width_advance_bold = static_cast<float>(glyph_advance_in_em_bold) / font_metrics_bold.designUnitsPerEm;
+	float desired_width_bold = desired_height * width_advance_bold;
+
+	float bold_scale = desired_width / desired_width_bold;
     // We need the width to be aligned on a per-pixel boundary, thus we will
     // roundf the desired_width and calculate the font size given the new exact width
     renderer->font_width = roundf(desired_width);
     renderer->font_size = renderer->font_width / width_advance;
+
+	renderer->font_size_scale_bold = renderer->font_size * bold_scale;
+
     float frac_font_ascent = (renderer->font_size * renderer->font_metrics.ascent) / renderer->font_metrics.designUnitsPerEm;
     float frac_font_descent = (renderer->font_size * renderer->font_metrics.descent) / renderer->font_metrics.designUnitsPerEm;
     float linegap = (renderer->font_size * renderer->font_metrics.lineGap) / renderer->font_metrics.designUnitsPerEm;
@@ -311,7 +331,10 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
     SafeRelease(&font_face);
+	SafeRelease(&font_face_bold);
 	SafeRelease(&write_font);
+	SafeRelease(&write_font_bold);
+
 	SafeRelease(&font_family);
 	SafeRelease(&font_collection);
 }
@@ -416,6 +439,7 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	}
 	if (hl_attribs->flags & HL_ATTRIB_BOLD) {
 		text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
+		text_layout->SetFontSize(renderer->font_size_scale_bold, range);
 	}
 	if (hl_attribs->flags & HL_ATTRIB_STRIKETHROUGH) {
 		text_layout->SetStrikethrough(true, range);
