@@ -170,9 +170,9 @@ void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, f
 	renderer->linespace_factor = linespace_factor;
 
 	renderer->dpi_scale = monitor_dpi / 96.0f;
-    renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
+	renderer->hl_attribs.resize(MAX_HIGHLIGHT_ATTRIBS);
 
-    wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
+	wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
 
 	InitializeD2D(renderer);
 	InitializeD3D(renderer);
@@ -233,8 +233,8 @@ float GetTextWidth(Renderer *renderer, wchar_t *text, uint32_t length) {
 }
 
 void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_string, int strlen) {
-    font_size = max(5.0f, min(font_size, 150.0f));
-    renderer->last_requested_font_size = font_size;
+	font_size = max(5.0f, min(font_size, 150.0f));
+	renderer->last_requested_font_size = font_size;
 
 	IDWriteFontCollection *font_collection;
 	WIN_CHECK(renderer->dwrite_factory->GetSystemFontCollection(&font_collection));
@@ -251,12 +251,12 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 
 	if (!exists) {
 		font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
-        // Reset fallback font if it doesn't exist
-        if (!exists) {
-            wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
-            font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
-        }
-        memcpy(renderer->font, renderer->fallback_font, (wcslen(renderer->fallback_font) + 1) * sizeof(wchar_t));
+		// Reset fallback font if it doesn't exist
+		if (!exists) {
+			wcscpy_s(renderer->fallback_font, MAX_FONT_LENGTH, L"Consolas");
+			font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
+		}
+		memcpy(renderer->font, renderer->fallback_font, (wcslen(renderer->fallback_font) + 1) * sizeof(wchar_t));
 	}
 
 	IDWriteFontFamily *font_family;
@@ -265,18 +265,18 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	IDWriteFont *write_font;
 	WIN_CHECK(font_family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &write_font));
 
-    IDWriteFontFace *font_face;
-    WIN_CHECK(write_font->CreateFontFace(&font_face));
-    WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&renderer->font_face));
+	IDWriteFontFace *font_face;
+	WIN_CHECK(write_font->CreateFontFace(&font_face));
+	WIN_CHECK(font_face->QueryInterface<IDWriteFontFace1>(&renderer->font_face));
 
-    renderer->font_face->GetMetrics(&renderer->font_metrics);
+	renderer->font_face->GetMetrics(&renderer->font_metrics);
 
-    uint16_t glyph_index;
-    constexpr uint32_t codepoint = L'A';
-    WIN_CHECK(renderer->font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
+	uint16_t glyph_index;
+	constexpr uint32_t codepoint = L'A';
+	WIN_CHECK(renderer->font_face->GetGlyphIndicesW(&codepoint, 1, &glyph_index));
 
-    int32_t glyph_advance_in_em;
-    WIN_CHECK(renderer->font_face->GetDesignGlyphAdvances(1, &glyph_index, &glyph_advance_in_em));
+	int32_t glyph_advance_in_em;
+	WIN_CHECK(renderer->font_face->GetDesignGlyphAdvances(1, &glyph_index, &glyph_advance_in_em));
 
 	IDWriteFont* write_font_bold;
 	WIN_CHECK(font_family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &write_font_bold));
@@ -291,29 +291,29 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	int32_t glyph_advance_in_em_bold;
 	WIN_CHECK(font_size_scale_bold1->GetDesignGlyphAdvances(1, &glyph_index, &glyph_advance_in_em_bold));
 
-    float desired_height = font_size * renderer->dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
-    float width_advance = static_cast<float>(glyph_advance_in_em) / renderer->font_metrics.designUnitsPerEm;
-    float desired_width = desired_height * width_advance;
+	float desired_height = font_size * renderer->dpi_scale * (DEFAULT_DPI / POINTS_PER_INCH);
+	float width_advance = static_cast<float>(glyph_advance_in_em) / renderer->font_metrics.designUnitsPerEm;
+	float desired_width = desired_height * width_advance;
 
 	float width_advance_bold = static_cast<float>(glyph_advance_in_em_bold) / font_metrics_bold.designUnitsPerEm;
 	float desired_width_bold = desired_height * width_advance_bold;
 
 	float bold_scale = desired_width / desired_width_bold;
-    // We need the width to be aligned on a per-pixel boundary, thus we will
-    // roundf the desired_width and calculate the font size given the new exact width
-    renderer->font_width = roundf(desired_width);
-    renderer->font_size = renderer->font_width / width_advance;
+	// We need the width to be aligned on a per-pixel boundary, thus we will
+	// roundf the desired_width and calculate the font size given the new exact width
+	renderer->font_width = roundf(desired_width);
+	renderer->font_size = renderer->font_width / width_advance;
 
 	renderer->font_size_scale_bold = renderer->font_size * bold_scale;
 
-    float frac_font_ascent = (renderer->font_size * renderer->font_metrics.ascent) / renderer->font_metrics.designUnitsPerEm;
-    float frac_font_descent = (renderer->font_size * renderer->font_metrics.descent) / renderer->font_metrics.designUnitsPerEm;
-    float linegap = (renderer->font_size * renderer->font_metrics.lineGap) / renderer->font_metrics.designUnitsPerEm;
-    float half_linegap = linegap / 2.0f;
-    renderer->font_ascent = ceilf(frac_font_ascent + half_linegap);
-    renderer->font_descent = ceilf(frac_font_descent + half_linegap);
-    renderer->font_height = renderer->font_ascent + renderer->font_descent;
-    renderer->font_height *= renderer->linespace_factor;
+	float frac_font_ascent = (renderer->font_size * renderer->font_metrics.ascent) / renderer->font_metrics.designUnitsPerEm;
+	float frac_font_descent = (renderer->font_size * renderer->font_metrics.descent) / renderer->font_metrics.designUnitsPerEm;
+	float linegap = (renderer->font_size * renderer->font_metrics.lineGap) / renderer->font_metrics.designUnitsPerEm;
+	float half_linegap = linegap / 2.0f;
+	renderer->font_ascent = ceilf(frac_font_ascent + half_linegap);
+	renderer->font_descent = ceilf(frac_font_descent + half_linegap);
+	renderer->font_height = renderer->font_ascent + renderer->font_descent;
+	renderer->font_height *= renderer->linespace_factor;
 
 	WIN_CHECK(renderer->dwrite_factory->CreateTextFormat(
 		renderer->font,
@@ -330,7 +330,7 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	WIN_CHECK(renderer->dwrite_text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
 	WIN_CHECK(renderer->dwrite_text_format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 
-    SafeRelease(&font_face);
+	SafeRelease(&font_face);
 	SafeRelease(&font_face_bold);
 	SafeRelease(&write_font);
 	SafeRelease(&write_font_bold);
@@ -421,15 +421,15 @@ uint32_t CreateBackgroundColor(Renderer *renderer, HighlightAttributes *hl_attri
 }
 
 uint32_t CreateSpecialColor(Renderer *renderer, HighlightAttributes *hl_attribs) {
-    return hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
+	return hl_attribs->special == DEFAULT_COLOR ? renderer->hl_attribs[0].special : hl_attribs->special;
 }
 
 void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attribs,
 	IDWriteTextLayout *text_layout, int start, int end) {
 	GlyphDrawingEffect *drawing_effect = new GlyphDrawingEffect(
-            CreateForegroundColor(renderer, hl_attribs),
-            CreateSpecialColor(renderer, hl_attribs)
-    );
+			CreateForegroundColor(renderer, hl_attribs),
+			CreateSpecialColor(renderer, hl_attribs)
+	);
 	DWRITE_TEXT_RANGE range {
 		.startPosition = static_cast<uint32_t>(start),
 		.length = static_cast<uint32_t>(end - start)
@@ -439,7 +439,8 @@ void ApplyHighlightAttributes(Renderer *renderer, HighlightAttributes *hl_attrib
 	}
 	if (hl_attribs->flags & HL_ATTRIB_BOLD) {
 		text_layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
-		text_layout->SetFontSize(renderer->font_size_scale_bold, range);
+		if(renderer->font_size != renderer->font_size_scale_bold)
+			text_layout->SetFontSize(renderer->font_size_scale_bold, range);
 	}
 	if (hl_attribs->flags & HL_ATTRIB_STRIKETHROUGH) {
 		text_layout->SetStrikethrough(true, range);
@@ -537,6 +538,22 @@ void DrawGridLine(Renderer *renderer, int row) {
 			if(abs(char_width - renderer->font_width) > 0.01f) {
 				DWRITE_TEXT_RANGE range { .startPosition = static_cast<uint32_t>(i), .length = 1 };
 				text_layout->SetCharacterSpacing(0, renderer->font_width - char_width, 0, range);
+			}
+		}
+		else {
+			// Add spacing for character not existing in this font
+			uint16_t glyph_index;
+			uint32_t code = static_cast<uint32_t>(renderer->grid_chars[base + i]);
+			WIN_CHECK(renderer->font_face->GetGlyphIndicesW(&code, 1, &glyph_index));
+			if (glyph_index == 0)
+			{
+				float char_width = GetTextWidth(renderer, &renderer->grid_chars[base + i], 1);
+				float d_width = renderer->font_width - char_width;
+				if (d_width > 0)
+				{
+					DWRITE_TEXT_RANGE range{ .startPosition = static_cast<uint32_t>(i), .length = 1 };
+					text_layout->SetCharacterSpacing(d_width / 2, d_width / 2, 0, range);
+				}
 			}
 		}
 
@@ -727,8 +744,8 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 		renderer->grid_rows = grid_rows;
 
 		renderer->grid_chars = static_cast<wchar_t *>(malloc(static_cast<size_t>(grid_cols) * grid_rows * sizeof(wchar_t)));
-        // Initialize all grid character to a space. An empty
-        // grid cell is equivalent to a space in a text layout
+		// Initialize all grid character to a space. An empty
+		// grid cell is equivalent to a space in a text layout
 		for (int i = 0; i < grid_cols * grid_rows; ++i) {
 			renderer->grid_chars[i] = L' ';
 		}
@@ -869,45 +886,45 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 			(right - left) * sizeof(CellProperty)
 		);
 
-        // Sadly I have given up on making use of IDXGISwapChain1::Present1
-        // scroll_rects or bitmap copies. The former seems insufficient for
-        // nvim since it can require multiple scrolls per frame, the latter
-        // I can't seem to make work with the FLIP_SEQUENTIAL swapchain model.
-        // Thus we fall back to drawing the appropriate scrolled grid lines
-        DrawGridLine(renderer, target_row);
+		// Sadly I have given up on making use of IDXGISwapChain1::Present1
+		// scroll_rects or bitmap copies. The former seems insufficient for
+		// nvim since it can require multiple scrolls per frame, the latter
+		// I can't seem to make work with the FLIP_SEQUENTIAL swapchain model.
+		// Thus we fall back to drawing the appropriate scrolled grid lines
+		DrawGridLine(renderer, target_row);
 	}
 
-    // Redraw the line which the cursor has moved to, as it is no
-    // longer guaranteed that the cursor is still there
-    int cursor_row = renderer->cursor.row - rows;
-    if(cursor_row >= 0 && cursor_row < renderer->grid_rows) {
-        DrawGridLine(renderer, cursor_row);
-    }
+	// Redraw the line which the cursor has moved to, as it is no
+	// longer guaranteed that the cursor is still there
+	int cursor_row = renderer->cursor.row - rows;
+	if(cursor_row >= 0 && cursor_row < renderer->grid_rows) {
+		DrawGridLine(renderer, cursor_row);
+	}
 }
 
 void DrawBorderRectangles(Renderer *renderer) {
 	float left_border = renderer->font_width * renderer->grid_cols;
 	float top_border = renderer->font_height * renderer->grid_rows;
 
-    if(left_border != static_cast<float>(renderer->pixel_size.width)) {
-        D2D1_RECT_F vertical_rect {
-            .left = left_border,
-            .top = 0.0f,
-            .right = static_cast<float>(renderer->pixel_size.width),
-            .bottom = static_cast<float>(renderer->pixel_size.height)
-        };
-        DrawBackgroundRect(renderer, vertical_rect, &renderer->hl_attribs[0]);
-    }
+	if(left_border != static_cast<float>(renderer->pixel_size.width)) {
+		D2D1_RECT_F vertical_rect {
+			.left = left_border,
+			.top = 0.0f,
+			.right = static_cast<float>(renderer->pixel_size.width),
+			.bottom = static_cast<float>(renderer->pixel_size.height)
+		};
+		DrawBackgroundRect(renderer, vertical_rect, &renderer->hl_attribs[0]);
+	}
 
-    if(top_border != static_cast<float>(renderer->pixel_size.height)) {
-        D2D1_RECT_F horizontal_rect {
-            .left = 0.0f,
-            .top = top_border,
-            .right = static_cast<float>(renderer->pixel_size.width),
-            .bottom = static_cast<float>(renderer->pixel_size.height)
-        };
-        DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
-    }
+	if(top_border != static_cast<float>(renderer->pixel_size.height)) {
+		D2D1_RECT_F horizontal_rect {
+			.left = 0.0f,
+			.top = top_border,
+			.right = static_cast<float>(renderer->pixel_size.width),
+			.bottom = static_cast<float>(renderer->pixel_size.height)
+		};
+		DrawBackgroundRect(renderer, horizontal_rect, &renderer->hl_attribs[0]);
+	}
 }
 
 void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen) {
@@ -924,19 +941,19 @@ void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strle
 	size_t size_str_len = strlen - (font_str_len + 2);
 	size_str += 2;
 
-    const char *fallback_font_str = strstr(size_str, ":");
-    if(fallback_font_str) {
-        fallback_font_str += 1;
-        size_t fallback_font_str_len = strlen - (fallback_font_str - guifont);
+	const char *fallback_font_str = strstr(size_str, ":");
+	if(fallback_font_str) {
+		fallback_font_str += 1;
+		size_t fallback_font_str_len = strlen - (fallback_font_str - guifont);
 
-        int wstrlen = MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, 0, 0);
-        if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH) {
-            MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, renderer->fallback_font, MAX_FONT_LENGTH - 1);
-            renderer->fallback_font[wstrlen] = L'\0';
-        }
+		int wstrlen = MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, 0, 0);
+		if (wstrlen != 0 && wstrlen < MAX_FONT_LENGTH) {
+			MultiByteToWideChar(CP_UTF8, 0, fallback_font_str, fallback_font_str_len, renderer->fallback_font, MAX_FONT_LENGTH - 1);
+			renderer->fallback_font[wstrlen] = L'\0';
+		}
 
-        size_str_len -= fallback_font_str_len;
-    }
+		size_str_len -= fallback_font_str_len;
+	}
 
 	float font_size = DEFAULT_FONT_SIZE;
 	// Assume font size part of string is less than 256 characters
@@ -1086,8 +1103,8 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			if(!renderer->ui_busy) {
 				DrawCursor(renderer);
 			}
-            DrawBorderRectangles(renderer);
-            FinishDraw(renderer);
+			DrawBorderRectangles(renderer);
+			FinishDraw(renderer);
 		}
 	}
 }
