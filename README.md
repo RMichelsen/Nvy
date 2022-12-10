@@ -1,12 +1,14 @@
 # Nvy
+
 Nvy is a minimal [Neovim](https://neovim.io/) client for Windows written in C++.
 It uses DirectWrite to shape and render the grid cells and text.\
 Since Nvy is just a front-end for Neovim, installing Neovim is required to use Nvy, preferably the
 latest nightly version from [here](https://github.com/neovim/neovim/releases).
 
-![](resources/client.png)
+![Showcase image](resources/client.png)
 
-# Configuration
+## Configuration
+
 Nvy sets the global vim variable `g:nvy = 1` in case you want to specialize your init.vim while using Nvy.
 
 Fonts can be changed by setting the guifont in `init.vim`, for example:
@@ -21,26 +23,33 @@ Nvy can be started with the following flags:
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
 - `--help` to show the help menu
 
-# Extra Features
+## Extra Features
+
 - You can use Alt+Enter to toggle fullscreen
 - You can use Ctrl+Mousewheel to zoom
 - You can drag files onto Nvy to open them
 
-# Releases
+## Releases
+
 Releases can be found [here](https://github.com/RMichelsen/Nvy/releases)
 
-# Build
-## Requirements
+## Build
+
+### Requirements
+
 - A compiler supporting `C++20`
 - [The latest Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk/)
 
 Apart from the Windows SDK, the only dependency Nvy uses is the excellent [MPack](https://github.com/ludocode/mpack) library
 which is compiled alongside the client itself.
 
-## Build example with [Ninja](https://ninja-build.org/)
-`git clone https://github.com/RMichelsen/Nvy.git`\
-`cd Nvy`\
-`mkdir build`\
-`cd build`\
-`cmake .. -GNinja`\
-`ninja`
+### Build example with [Ninja](https://ninja-build.org/)
+
+```sh
+git clone https://github.com/RMichelsen/Nvy.git
+cd Nvy
+mkdir build
+cd build
+cmake .. -GNinja
+ninja
+```
