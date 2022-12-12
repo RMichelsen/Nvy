@@ -1,0 +1,48 @@
+name: Commit CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '![0-9]+.*'
+    paths:
+      - '**/**'
+      - '!*.md'
+      - '!.gitignore'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+    
+      - name: Checkout last commit
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+    
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.1.3
+
+      - name: Build Nvy
+        id: build_nvy
+        shell: pwsh
+        run: |
+          set CC=cl
+          set CXX=cl
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_FLAGS="/MT" -DCMAKE_C_FLAGS="/MT"
+          cmake --build . --config Release
+        if: ${{ success() }}
+
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          if-no-files-found: error
+          path: |
+            .\build\Release\Nvy.exe
+        if: ${{ success() }}
