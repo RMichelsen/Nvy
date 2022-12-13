@@ -6,7 +6,7 @@ on:
     branches:
       - '*'
     tags:
-      - '![0-9]+.*'
+      - '*'
     paths:
       - '**/**'
       - '!*.md'
@@ -26,6 +26,7 @@ jobs:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.1.3
 
+      # build Nvy
       - name: Build Nvy
         id: build_nvy
         shell: pwsh
@@ -38,11 +39,31 @@ jobs:
           cmake --build . --config Release
         if: ${{ success() }}
 
+      # for branch master only
+      - name: Create Nightly Release
+        if: ${{ github.ref == 'refs/heads/master' && success() }}
+        uses: 'marvinpinto/action-automatic-releases@latest'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: latest
+          prerelease: true
+          title: "Nightly Build"
+          files: |
+            ./build/Release/Nvy.exe
 
+      # for tags only
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: ${{ startsWith(github.ref, 'refs/tags/') && success() }}
+        with:
+          files: |
+            ./build/Release/Nvy.exe
+
+      # for !tags
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
+        if: ${{ startsWith(github.ref, 'refs/heads/') && success() }}
         with:
           if-no-files-found: error
           path: |
-            .\build\Release\Nvy.exe
-        if: ${{ success() }}
+            ./build/Release/Nvy.exe
