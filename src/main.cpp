@@ -109,39 +109,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			context->saved_window_width = new_width;
 		}
 	} return 0;
-	case WM_MOVE: {
-		RECT window_rect;
-		DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT)); // Get window position without shadows
-		HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
-		UINT current_dpi = 0;
-		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &current_dpi, &current_dpi);
-		if (current_dpi != context->saved_dpi_scaling) {
-			float dpi_scale = static_cast<float>(current_dpi) / static_cast<float>(context->saved_dpi_scaling);
-			GetWindowRect(hwnd, &window_rect); // Window RECT with shadows
-			int new_window_width = (window_rect.right - window_rect.left) * dpi_scale + 0.5f;
-			int new_window_height = (window_rect.bottom - window_rect.top) * dpi_scale + 0.5f;
+	case WM_DPICHANGED: {
+		UINT current_dpi = HIWORD(wparam);
+		RECT* const prcNewWindow = (RECT*)lparam;
 
-			// Make sure window is not larger than the actual monitor
-			MONITORINFO monitor_info;
-			monitor_info.cbSize = sizeof(monitor_info);
-			GetMonitorInfo(monitor, &monitor_info);
-			uint32_t monitor_width = monitor_info.rcWork.right - monitor_info.rcWork.left;
-			uint32_t monitor_height = monitor_info.rcWork.bottom - monitor_info.rcWork.top;
-			if (new_window_width > monitor_width) new_window_width = monitor_width;
-			if (new_window_height > monitor_height) new_window_height = monitor_height;
+		context->renderer->dpi_scale = current_dpi / 96.0f;
+		RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
+		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
+				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top);
+		NvimSendResize(context->nvim, rows, cols);
+		context->saved_dpi_scaling = current_dpi;
 
-			SetWindowPos(hwnd, nullptr, 0, 0, new_window_width, new_window_height, SWP_NOMOVE | SWP_NOOWNERZORDER);
-
-			context->renderer->dpi_scale = current_dpi / 96.0f;
-			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
-				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
-				NvimSendResize(context->nvim, rows, cols);
-			}
-
-			context->saved_dpi_scaling = current_dpi;
-		}
+		SetWindowPos(hwnd, NULL,
+				0, 0,
+				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top,
+				SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 	} return 0;
 	case WM_DESTROY: {
 		PostQuitMessage(0);
@@ -173,13 +155,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		NvimSendChar(context->nvim, static_cast<wchar_t>(wparam));
 	} return 0;
 	case WM_SYSCHAR: {
-		context->dead_char_pending = false;
-		NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
+		if (static_cast<int>(wparam) == VK_SPACE) {
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+		else {
+			context->dead_char_pending = false;
+			NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
+		}
 	} return 0;
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		// Special case for <ALT+ENTER> (fullscreen transition)
-		if (((GetKeyState(VK_MENU) & 0x80) != 0) && wparam == VK_RETURN) {
+		if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else {
