@@ -93,6 +93,7 @@ struct Renderer {
 	wchar_t font[MAX_FONT_LENGTH];
 	wchar_t fallback_font[MAX_FONT_LENGTH];
 	DWRITE_FONT_METRICS1 font_metrics;
+	float font_size_scale_bold;
 	float dpi_scale;
     float font_size;
 	float font_height;
