@@ -92,6 +92,14 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 }
 
+void SendResizeIfNecessary(Context *context, int rows, int cols) {
+	if (!context->renderer->grid_initialized) return;
+
+	if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
+		NvimSendResize(context->nvim, rows, cols);
+	}
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	Context *context = reinterpret_cast<Context *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 	if (msg == WM_CREATE) {
@@ -117,7 +125,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
 		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top);
-		NvimSendResize(context->nvim, rows, cols);
+		SendResizeIfNecessary(context, rows, cols);
 		context->saved_dpi_scaling = current_dpi;
 
 		SetWindowPos(hwnd, NULL,
@@ -135,7 +143,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_RENDERER_FONT_UPDATE: {
 		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 			context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-		NvimSendResize(context->nvim, rows, cols);
+		SendResizeIfNecessary(context, rows, cols);
 	} return 0;
 	case WM_DEADCHAR:
 	case WM_SYSDEADCHAR: {
@@ -281,9 +289,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
-				NvimSendResize(context->nvim, rows, cols);
-			}
+			SendResizeIfNecessary(context, rows, cols);
 		}
 		else {
 			for (int i = 0; i < abs(scroll_amount); ++i) {
@@ -466,7 +472,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 			previous_height = context.saved_window_height;
 			auto [rows, cols] = RendererPixelsToGridSize(context.renderer, context.saved_window_width, context.saved_window_height);
 			RendererResize(context.renderer, context.saved_window_width, context.saved_window_height);
-			NvimSendResize(context.nvim, rows, cols);
+			SendResizeIfNecessary(&context, rows, cols);
 		}
 	}
 

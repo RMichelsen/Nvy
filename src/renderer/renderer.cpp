@@ -750,6 +750,8 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 			renderer->grid_chars[i] = L' ';
 		}
 		renderer->grid_cell_properties = static_cast<CellProperty *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(CellProperty)));
+
+		renderer->grid_initialized = true;
 	}
 }
 

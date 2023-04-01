@@ -102,6 +102,7 @@ struct Renderer {
     float font_descent;
 
 	D2D1_SIZE_U pixel_size;
+	bool grid_initialized;
 	int grid_rows;
 	int grid_cols;
 	wchar_t *grid_chars;
