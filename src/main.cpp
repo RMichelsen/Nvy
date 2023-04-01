@@ -452,7 +452,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &should_use_dark_mode, sizeof(BOOL));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
-	
+	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
+	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
+	SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
 	MSG msg;
 	uint32_t previous_width = 0, previous_height = 0;
 	while (GetMessage(&msg, 0, 0, 0)) {
