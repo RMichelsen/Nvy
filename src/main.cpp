@@ -77,7 +77,6 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			if (context->start_maximized) {
 				ToggleFullscreen(context->hwnd, context);
 			}
-			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
 		} break;
         case NvimRequest::nvim_input:
         case NvimRequest::nvim_input_mouse:
@@ -87,7 +86,12 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 	else if (result.type == MPackMessageType::Notification) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
+			bool previous_draws = context->renderer->draws;
 			RendererRedraw(context->renderer, result.params);
+
+			if (previous_draws == 0 && context->renderer->draws > 0) {
+				ShowWindow(context->hwnd, SW_SHOWDEFAULT);
+			}
 		}
 	}
 }
@@ -402,7 +406,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
-	HBRUSH bg_brush = (HBRUSH)GetStockObject(HOLLOW_BRUSH);
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
 		.style = CS_HREDRAW | CS_VREDRAW,
@@ -410,7 +413,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.hInstance = instance,
         .hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
-		.hbrBackground = bg_brush,
 		.lpszClassName = window_class_name,
         .hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
 	};
@@ -479,7 +481,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
-	DeleteObject(bg_brush);
 	DestroyWindow(hwnd);
 
 	return nvim.exit_code;

@@ -111,6 +111,7 @@ struct Renderer {
 	HWND hwnd;
 	bool draw_active;
 	bool ui_busy;
+	int draws;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor, float monitor_dpi);

@@ -593,6 +593,12 @@ void DrawGridLine(Renderer *renderer, int row) {
 	text_layout->Release();
 }
 
+void DrawAllGridLines(Renderer *renderer) {
+	for (size_t i = 0; i < renderer->grid_rows; ++i) {
+		DrawGridLine(renderer, i);
+	}
+}
+
 bool IsSurrogatePair(wchar_t left, wchar_t right) {
 	return (0xD800 <= left && left <= 0xDBFF) && (0xDC00 <= right && right <= 0xDFFF);
 }
@@ -1059,9 +1065,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
-			for (size_t i = 0; i < renderer->grid_rows; ++i) {
-				DrawGridLine(renderer, i);
-			}
+			DrawAllGridLines(renderer);
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
@@ -1105,11 +1109,15 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
+			if (renderer->draws == 1) {
+				DrawAllGridLines(renderer);
+			}
 			if(!renderer->ui_busy) {
 				DrawCursor(renderer);
 			}
 			DrawBorderRectangles(renderer);
 			FinishDraw(renderer);
+			++renderer->draws;
 		}
 	}
 }
