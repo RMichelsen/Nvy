@@ -402,7 +402,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
-	HBRUSH bg_brush = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	HBRUSH bg_brush = (HBRUSH)GetStockObject(HOLLOW_BRUSH);
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
 		.style = CS_HREDRAW | CS_VREDRAW,
