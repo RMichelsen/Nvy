@@ -1059,6 +1059,9 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
+			for (size_t i = 0; i < renderer->grid_rows; ++i) {
+				DrawGridLine(renderer, i);
+			}
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
