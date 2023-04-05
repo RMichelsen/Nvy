@@ -68,15 +68,15 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 					start_size.width, start_size.height, false);
 			}
 
+			if (context->start_maximized) {
+				ToggleFullscreen(context->hwnd, context);
+			}
+
 			// Attach the renderer now that the window size is determined
 			RendererAttach(context->renderer);
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			NvimSendUIAttach(context->nvim, rows, cols);
-
-			if (context->start_maximized) {
-				ToggleFullscreen(context->hwnd, context);
-			}
 		} break;
         case NvimRequest::nvim_input:
         case NvimRequest::nvim_input_mouse:
@@ -86,12 +86,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 	else if (result.type == MPackMessageType::Notification) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
-			bool previous_draws = context->renderer->draws;
 			RendererRedraw(context->renderer, result.params);
-
-			if (previous_draws == 0 && context->renderer->draws > 0) {
-				ShowWindow(context->hwnd, SW_SHOWDEFAULT);
-			}
 		}
 	}
 }
@@ -469,6 +464,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	while (GetMessage(&msg, 0, 0, 0)) {
 		// TranslateMessage(&msg);
 		DispatchMessage(&msg);
+
+		if (renderer.draw_active) continue;
+
 		if (previous_width != context.saved_window_width || previous_height != context.saved_window_height) {
 			previous_width = context.saved_window_width;
 			previous_height = context.saved_window_height;

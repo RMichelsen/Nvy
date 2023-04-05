@@ -1109,14 +1109,20 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
-			if (renderer->draws == 1) {
+			if (renderer->draws == 0) {
+				ShowWindow(renderer->hwnd, SW_SHOWDEFAULT);
+			} else if (renderer->draws == 1) {
+				// On the first update all previous lines will get
+				// cleared, so redraw them so that they don't disappear.
 				DrawAllGridLines(renderer);
 			}
+
 			if(!renderer->ui_busy) {
 				DrawCursor(renderer);
 			}
 			DrawBorderRectangles(renderer);
 			FinishDraw(renderer);
+
 			++renderer->draws;
 		}
 	}
