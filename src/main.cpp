@@ -2,6 +2,7 @@
 #include "renderer/renderer.h"
 
 struct Context {
+	int start_x, start_y;
 	GridSize start_grid_size;
 	bool start_maximized;
 	bool start_fullscreen;
@@ -75,6 +76,14 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			NvimSendUIAttach(context->nvim, rows, cols);
 
+			if (context->start_x != CW_USEDEFAULT ||
+				context->start_y != CW_USEDEFAULT) {
+				SetWindowPos(context->hwnd, NULL,
+					context->start_x, context->start_y,
+					0, 0,
+					SWP_NOSIZE | SWP_NOREDRAW | SWP_NOACTIVATE |
+					SWP_NOOWNERZORDER | SWP_NOZORDER);
+			}
 			if (context->start_fullscreen) {
 				ToggleFullscreen(context->hwnd, context);
 			}
@@ -355,6 +364,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	float linespace_factor = 1.0f;
 	int64_t rows = 0;
 	int64_t cols = 0;
+	int64_t x = CW_USEDEFAULT;
+	int64_t y = CW_USEDEFAULT;
 
 	constexpr int MAX_NVIM_CMD_LINE_SIZE = 32767;
 	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
@@ -377,6 +388,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 			wchar_t *end_ptr;
 			cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
 			rows = wcstol(end_ptr + 1, nullptr, 10);
+		}
+		else if(!wcsncmp(cmd_line_args[i], L"--position=", wcslen(L"--position="))) {
+			wchar_t *end_ptr;
+			x = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
+			y = wcstol(end_ptr + 1, nullptr, 10);
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--linespace-factor=", wcslen(L"--linespace-factor="))) {
 			wchar_t *end_ptr;
@@ -422,6 +438,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	Nvim nvim {};
 	Renderer renderer {};
 	Context context {
+		.start_x = static_cast<int>(x),
+		.start_y = static_cast<int>(y),
 		.start_grid_size {
 			.rows = static_cast<int>(rows),
 			.cols = static_cast<int>(cols)
