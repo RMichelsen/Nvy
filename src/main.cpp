@@ -4,6 +4,7 @@
 struct Context {
 	GridSize start_grid_size;
 	bool start_maximized;
+	bool start_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -74,10 +75,10 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			NvimSendUIAttach(context->nvim, rows, cols);
 
-			if (context->start_maximized) {
+			if (context->start_fullscreen) {
 				ToggleFullscreen(context->hwnd, context);
 			}
-			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
+			ShowWindow(context->hwnd, context->start_maximized ? SW_MAXIMIZE : SW_SHOWDEFAULT);
 		} break;
         case NvimRequest::nvim_input:
         case NvimRequest::nvim_input_mouse:
@@ -349,6 +350,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
 	bool start_maximized = false;
+	bool start_fullscreen = false;
 	bool disable_ligatures = false;
 	float linespace_factor = 1.0f;
 	int64_t rows = 0;
@@ -364,6 +366,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	for(int i = 1; i < n_args; ++i) {
 		if(!wcscmp(cmd_line_args[i], L"--maximize")) {
 			start_maximized = true;
+		}
+		else if(!wcscmp(cmd_line_args[i], L"--fullscreen")) {
+			start_fullscreen = true;
 		}
 		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {
 			disable_ligatures = true;
@@ -422,6 +427,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 			.cols = static_cast<int>(cols)
 		},
 		.start_maximized = start_maximized,
+		.start_fullscreen = start_fullscreen,
 
 		.nvim = &nvim,
 		.renderer = &renderer,
