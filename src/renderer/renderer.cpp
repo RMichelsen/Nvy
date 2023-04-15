@@ -55,6 +55,11 @@ void InitializeDWrite(Renderer *renderer) {
 
 void HandleDeviceLost(Renderer *renderer);
 void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint32_t height) {
+	// Initializing window resources invalidates previous draws to the window,
+	// so all lines need to be redrawn to make sure they are preserved.
+	// Otherwise lines will appear entirely black until updated.
+	renderer->draws_invalidated = true;
+
 	renderer->pixel_size.width = width;
 	renderer->pixel_size.height = height;
 
@@ -345,6 +350,7 @@ void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_st
 	}
 
 	UpdateFontMetrics(renderer, font_size, font_string, strlen);
+	renderer->draws_invalidated = true;
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
@@ -1065,7 +1071,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
-			DrawAllGridLines(renderer);
+			renderer->draws_invalidated = true;
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
@@ -1109,11 +1115,13 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
-			if (renderer->draws == 0) {
+			if (!renderer->has_drawn) {
+				renderer->has_drawn = true;
 				ShowWindow(renderer->hwnd, SW_SHOWDEFAULT);
-			} else if (renderer->draws == 1) {
-				// On the first update all previous lines will get
-				// cleared, so redraw them so that they don't disappear.
+			}
+
+			if (renderer->draws_invalidated) {
+				renderer->draws_invalidated = false;
 				DrawAllGridLines(renderer);
 			}
 
@@ -1122,8 +1130,6 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			}
 			DrawBorderRectangles(renderer);
 			FinishDraw(renderer);
-
-			++renderer->draws;
 		}
 	}
 }
