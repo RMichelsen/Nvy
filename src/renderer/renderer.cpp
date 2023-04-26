@@ -1052,7 +1052,7 @@ void FinishDraw(Renderer *renderer) {
 	}
 }
 
-void RendererRedraw(Renderer *renderer, mpack_node_t params) {
+void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximized) {
 	StartDraw(renderer);
 
 	uint64_t redraw_commands_length = mpack_node_array_length(params);
@@ -1117,8 +1117,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		else if (MPackMatchString(redraw_command_name, "flush")) {
 			if (!renderer->has_drawn) {
 				renderer->has_drawn = true;
-				ShowWindow(renderer->hwnd, SW_SHOWDEFAULT);
-			}
+				ShowWindow(renderer->hwnd, start_maximized ? SW_MAXIMIZE : SW_SHOWDEFAULT);			}
 
 			if (renderer->draws_invalidated) {
 				renderer->draws_invalidated = false;

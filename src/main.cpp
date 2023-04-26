@@ -87,7 +87,6 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			if (context->start_fullscreen) {
 				ToggleFullscreen(context->hwnd, context);
 			}
-			ShowWindow(context->hwnd, context->start_maximized ? SW_MAXIMIZE : SW_SHOWDEFAULT);
 		} break;
         case NvimRequest::nvim_input:
         case NvimRequest::nvim_input_mouse:
@@ -97,7 +96,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 	else if (result.type == MPackMessageType::Notification) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
-			RendererRedraw(context->renderer, result.params);
+			RendererRedraw(context->renderer, result.params, context->start_maximized);
 		}
 	}
 }
