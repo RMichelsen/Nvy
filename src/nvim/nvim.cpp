@@ -565,14 +565,19 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 	return true;
 }
 
-void NvimOpenFile(Nvim *nvim, const wchar_t *file_name) {
+void NvimOpenFile(Nvim *nvim, const wchar_t *file_name, bool open_new_buffer) {
 
 	char utf8_encoded[MAX_PATH]{};
 	WideCharToMultiByte(CP_UTF8, 0, file_name, -1, utf8_encoded, MAX_PATH, NULL, NULL);
 
-	char file_command[MAX_PATH + 2] = {};
-	strcpy_s(file_command, MAX_PATH, "e ");
-	strcat_s(file_command, MAX_PATH - 3, utf8_encoded);
+	char file_command[MAX_PATH + 8] = {};
+	if (open_new_buffer) {
+		strcpy_s(file_command, MAX_PATH, "new ");
+	}
+	else {
+		strcpy_s(file_command, MAX_PATH, "e ");
+	}
+	strcat_s(file_command, MAX_PATH, utf8_encoded);
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
