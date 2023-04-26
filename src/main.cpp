@@ -272,8 +272,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		};
 		ScreenToClient(hwnd, &client_point);
 
-		float wheel_distance = GET_WHEEL_DELTA_WPARAM(wparam);
-		float scroll_amount = wheel_distance / WHEEL_DELTA;
+		float scroll_amount = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
 		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
 		MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp : MouseAction::MouseWheelDown;
 
