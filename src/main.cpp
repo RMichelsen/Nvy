@@ -57,7 +57,17 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			NvimParseConfig(context->nvim, result.params, &guifont_buffer);
 
 			if (!guifont_buffer.empty()) {
-				RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
+				bool updated = RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
+				if(!updated) {
+					guifont_buffer[guifont_buffer.size() - 1] = '"';
+					guifont_buffer.push_back('\0');
+					const char *error = "echom \"Unknown font: ";
+					char *command = static_cast<char *>(malloc(strlen(error) + guifont_buffer.size()));
+					memcpy(command, error, strlen(error));
+					memcpy(command + strlen(error), guifont_buffer.data(), guifont_buffer.size());
+					NvimSendCommand(context->nvim, command);
+					free(command);
+				}
 			}
 
 			if (context->start_grid_size.rows != 0 &&

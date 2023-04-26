@@ -237,7 +237,7 @@ float GetTextWidth(Renderer *renderer, wchar_t *text, uint32_t length) {
 	return metrics.width;
 }
 
-void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_string, int strlen) {
+bool UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_string, int strlen) {
 	font_size = max(5.0f, min(font_size, 150.0f));
 	renderer->last_requested_font_size = font_size;
 
@@ -254,7 +254,9 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 	BOOL exists;
 	font_collection->FindFamilyName(renderer->font, &index, &exists);
 
+	bool guifont_exists = true;
 	if (!exists) {
+		guifont_exists = false;
 		font_collection->FindFamilyName(renderer->fallback_font, &index, &exists);
 		// Reset fallback font if it doesn't exist
 		if (!exists) {
@@ -342,15 +344,17 @@ void UpdateFontMetrics(Renderer *renderer, float font_size, const char* font_str
 
 	SafeRelease(&font_family);
 	SafeRelease(&font_collection);
+
+	return guifont_exists;
 }
 
-void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string, int strlen) {
+bool RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string, int strlen) {
 	if (renderer->dwrite_text_format) {
 		renderer->dwrite_text_format->Release();
 	}
 
-	UpdateFontMetrics(renderer, font_size, font_string, strlen);
 	renderer->draws_invalidated = true;
+	return UpdateFontMetrics(renderer, font_size, font_string, strlen);
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
@@ -941,14 +945,14 @@ void DrawBorderRectangles(Renderer *renderer) {
 	}
 }
 
-void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen) {
+bool RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen) {
 	if (strlen == 0) {
-		return;
+		return false;
 	}
 
 	const char *size_str = strstr(guifont, ":h");
 	if (!size_str) {
-		return;
+		return false;
 	}
 
 	size_t font_str_len = size_str - guifont;
@@ -978,7 +982,7 @@ void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strle
 		font_size = static_cast<float>(atof(font_size_str));
 	}
 
-	RendererUpdateFont(renderer, font_size, guifont, static_cast<int>(font_str_len));
+	return RendererUpdateFont(renderer, font_size, guifont, static_cast<int>(font_str_len));
 }
 
 void SetGuiOptions(Renderer *renderer, mpack_node_t option_set) {

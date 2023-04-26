@@ -120,8 +120,8 @@ void RendererAttach(Renderer *renderer);
 void RendererShutdown(Renderer *renderer);
 
 void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
-void RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen);
-void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
+bool RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen);
+bool RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
 void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximized);
 
 PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols);

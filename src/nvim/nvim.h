@@ -59,6 +59,7 @@ void NvimShutdown(Nvim *nvim);
 
 void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out);
 
+void NvimSendCommand(Nvim *nvim, const char *command);
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);
 void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols);
 void NvimSendChar(Nvim *nvim, wchar_t input_char);
