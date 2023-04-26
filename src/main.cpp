@@ -327,7 +327,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			// Not the most elegant solution, but must wait for mouseclick to be registered with nvim
 			Sleep(10);
 
-			NvimOpenFile(context->nvim, file_to_open);
+      NvimOpenFile(context->nvim, file_to_open, (GetKeyState(VK_CONTROL) & 0x80) != 0);
 		}
 	} return 0;
 	case WM_SETFOCUS: {
