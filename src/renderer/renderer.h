@@ -102,6 +102,7 @@ struct Renderer {
     float font_descent;
 
 	D2D1_SIZE_U pixel_size;
+	bool grid_initialized;
 	int grid_rows;
 	int grid_cols;
 	wchar_t *grid_chars;
@@ -110,6 +111,8 @@ struct Renderer {
 	HWND hwnd;
 	bool draw_active;
 	bool ui_busy;
+	bool has_drawn;
+	bool draws_invalidated;
 };
 
 void RendererInitialize(Renderer *renderer, HWND hwnd, bool disable_ligatures, float linespace_factor, float monitor_dpi);

@@ -55,6 +55,11 @@ void InitializeDWrite(Renderer *renderer) {
 
 void HandleDeviceLost(Renderer *renderer);
 void InitializeWindowDependentResources(Renderer *renderer, uint32_t width, uint32_t height) {
+	// Initializing window resources invalidates previous draws to the window,
+	// so all lines need to be redrawn to make sure they are preserved.
+	// Otherwise lines will appear entirely black until updated.
+	renderer->draws_invalidated = true;
+
 	renderer->pixel_size.width = width;
 	renderer->pixel_size.height = height;
 
@@ -345,6 +350,7 @@ void RendererUpdateFont(Renderer *renderer, float font_size, const char *font_st
 	}
 
 	UpdateFontMetrics(renderer, font_size, font_string, strlen);
+	renderer->draws_invalidated = true;
 }
 
 void UpdateDefaultColors(Renderer *renderer, mpack_node_t default_colors) {
@@ -593,6 +599,12 @@ void DrawGridLine(Renderer *renderer, int row) {
 	text_layout->Release();
 }
 
+void DrawAllGridLines(Renderer *renderer) {
+	for (size_t i = 0; i < renderer->grid_rows; ++i) {
+		DrawGridLine(renderer, i);
+	}
+}
+
 bool IsSurrogatePair(wchar_t left, wchar_t right) {
 	return (0xD800 <= left && left <= 0xDBFF) && (0xDC00 <= right && right <= 0xDFFF);
 }
@@ -750,6 +762,8 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 			renderer->grid_chars[i] = L' ';
 		}
 		renderer->grid_cell_properties = static_cast<CellProperty *>(calloc(static_cast<size_t>(grid_cols) * grid_rows, sizeof(CellProperty)));
+
+		renderer->grid_initialized = true;
 	}
 }
 
@@ -1057,6 +1071,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 		}
 		else if (MPackMatchString(redraw_command_name, "default_colors_set")) {
 			UpdateDefaultColors(renderer, redraw_command_arr);
+			renderer->draws_invalidated = true;
 		}
 		else if (MPackMatchString(redraw_command_name, "hl_attr_define")) {
 			UpdateHighlightAttributes(renderer, redraw_command_arr);
@@ -1100,6 +1115,16 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params) {
 			ScrollRegion(renderer, redraw_command_arr);
 		}
 		else if (MPackMatchString(redraw_command_name, "flush")) {
+			if (!renderer->has_drawn) {
+				renderer->has_drawn = true;
+				ShowWindow(renderer->hwnd, SW_SHOWDEFAULT);
+			}
+
+			if (renderer->draws_invalidated) {
+				renderer->draws_invalidated = false;
+				DrawAllGridLines(renderer);
+			}
+
 			if(!renderer->ui_busy) {
 				DrawCursor(renderer);
 			}

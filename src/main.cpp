@@ -68,16 +68,15 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 					start_size.width, start_size.height, false);
 			}
 
+			if (context->start_maximized) {
+				ToggleFullscreen(context->hwnd, context);
+			}
+
 			// Attach the renderer now that the window size is determined
 			RendererAttach(context->renderer);
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 			NvimSendUIAttach(context->nvim, rows, cols);
-
-			if (context->start_maximized) {
-				ToggleFullscreen(context->hwnd, context);
-			}
-			ShowWindow(context->hwnd, SW_SHOWDEFAULT);
 		} break;
         case NvimRequest::nvim_input:
         case NvimRequest::nvim_input_mouse:
@@ -89,6 +88,14 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 		if (MPackMatchString(result.notification.name, "redraw")) {
 			RendererRedraw(context->renderer, result.params);
 		}
+	}
+}
+
+void SendResizeIfNecessary(Context *context, int rows, int cols) {
+	if (!context->renderer->grid_initialized) return;
+
+	if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
+		NvimSendResize(context->nvim, rows, cols);
 	}
 }
 
@@ -117,7 +124,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
 		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top);
-		NvimSendResize(context->nvim, rows, cols);
+		SendResizeIfNecessary(context, rows, cols);
 		context->saved_dpi_scaling = current_dpi;
 
 		SetWindowPos(hwnd, NULL,
@@ -135,7 +142,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_RENDERER_FONT_UPDATE: {
 		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 			context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-		NvimSendResize(context->nvim, rows, cols);
+		SendResizeIfNecessary(context, rows, cols);
 	} return 0;
 	case WM_DEADCHAR:
 	case WM_SYSDEADCHAR: {
@@ -281,9 +288,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
 			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
 				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
-				NvimSendResize(context->nvim, rows, cols);
-			}
+			SendResizeIfNecessary(context, rows, cols);
 		}
 		else {
 			for (int i = 0; i < abs(scroll_amount); ++i) {
@@ -396,8 +401,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 	const wchar_t *window_class_name = L"Nvy_Class";
 	const wchar_t *window_title = L"Nvy";
-	BOOL should_use_dark_mode = ShouldUseDarkMode();
-	HBRUSH bg_brush = CreateSolidBrush(should_use_dark_mode ? 0x00202020 : 0x00FFFFFF);
 	WNDCLASSEX window_class {
 		.cbSize = sizeof(WNDCLASSEX),
 		.style = CS_HREDRAW | CS_VREDRAW,
@@ -405,7 +408,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.hInstance = instance,
         .hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
-		.hbrBackground = bg_brush,
 		.lpszClassName = window_class_name,
         .hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
 	};
@@ -449,28 +451,34 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
 	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &(context.saved_dpi_scaling), &(context.saved_dpi_scaling));
 	constexpr int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+	BOOL should_use_dark_mode = ShouldUseDarkMode();
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &should_use_dark_mode, sizeof(BOOL));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
-	
+	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
+	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
+	SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
 	MSG msg;
 	uint32_t previous_width = 0, previous_height = 0;
 	while (GetMessage(&msg, 0, 0, 0)) {
 		// TranslateMessage(&msg);
 		DispatchMessage(&msg);
+
+		if (renderer.draw_active) continue;
+
 		if (previous_width != context.saved_window_width || previous_height != context.saved_window_height) {
 			previous_width = context.saved_window_width;
 			previous_height = context.saved_window_height;
 			auto [rows, cols] = RendererPixelsToGridSize(context.renderer, context.saved_window_width, context.saved_window_height);
 			RendererResize(context.renderer, context.saved_window_width, context.saved_window_height);
-			NvimSendResize(context.nvim, rows, cols);
+			SendResizeIfNecessary(&context, rows, cols);
 		}
 	}
 
 	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
-	DeleteObject(bg_brush);
 	DestroyWindow(hwnd);
 
 	return nvim.exit_code;
