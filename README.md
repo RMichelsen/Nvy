@@ -17,7 +17,9 @@ Note: you have to specify the font size, e.g. `set guifont=Fira\ Code` won't wor
 A fallback font can be specified by appending it, e.g. `set guifont=Fira\ Code:h24:Consolas` to set Consolas as the fallback font.
 
 Nvy can be started with the following flags:
-- `--maximize` to start in fullscreen
+- `--maximize` to start in maximized
+- `--fullscreen` to start in fullscreen
+- `--position=<x>,<y>` to start with a given position, e.g. `--position=500,200`
 - `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
 - `--disable-ligatures` to disable font ligatures
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
