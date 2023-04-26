@@ -1,0 +1,43 @@
+#include <winresrc.h>
+
+#define VER_FILE_VERSION @FILE_VERSION@
+#define VER_FILE_VERSION_STR "@FILE_VERSION_TEXT@\0"
+#define VER_PRODUCT_VERSION @PRODUCT_VERSION@
+#define VER_PRODUCT_VERSION_STR "@PRODUCT_VERSION_TEXT@\0"
+
+// Executable version information.
+
+VS_VERSION_INFO    VERSIONINFO
+FILEVERSION        VER_FILE_VERSION
+PRODUCTVERSION     VER_PRODUCT_VERSION
+FILEFLAGSMASK      VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+  FILEFLAGS        VS_FF_DEBUG
+#else
+  FILEFLAGS        0
+#endif
+FILEOS             VOS_NT_WINDOWS32
+FILETYPE           VFT_APP
+FILESUBTYPE        VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    // 0x0409 == U.S. English; 0x04E4 => Windows Multilingual
+    BLOCK "040904E4"
+    BEGIN
+      VALUE "CompanyName",      "Rasmus Ishøy Michelsen and collaborators\0"
+      VALUE "FileDescription",  "Nvy.exe\0"
+      VALUE "FileVersion",      VER_FILE_VERSION_STR
+      VALUE "InternalName",     "Nvy\0"
+      VALUE "LegalCopyright",   "MIT License © 2020 Rasmus Ishøy Michelsen\0"
+      VALUE "LegalTrademarks",  "https://github.com/RMichelsen/Nvy/\0"
+      VALUE "OriginalFilename", "Nvy.exe\0"
+      VALUE "ProductName",      "Nvy - A Neovim client in C++\0"
+      VALUE "ProductVersion",   VER_PRODUCT_VERSION_STR
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation",  0x409, 0x4E4
+  END
+END
