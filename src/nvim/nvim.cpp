@@ -260,7 +260,7 @@ void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols) {
 	MPackSendData(nvim->stdin_write, data, size);
 }
 
-void NvimSendModifiedInput(Nvim *nvim, const char *input, bool virtual_key) {
+void NvimSendModifiedInput(Nvim *nvim, const char *input) {
 	bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
 	bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 	bool alt_down = (GetKeyState(VK_MENU) & 0x80) != 0;
@@ -286,7 +286,7 @@ void NvimSendChar(Nvim *nvim, wchar_t input_char) {
 	// If the space is simply a regular space,
 	// simply send the modified input
 	if(input_char == VK_SPACE) {
-		NvimSendModifiedInput(nvim, "Space", true);
+		NvimSendModifiedInput(nvim, "Space");
 		return;
 	}
 
@@ -314,7 +314,7 @@ void NvimSendSysChar(Nvim *nvim, wchar_t input_char) {
 	}
 	WideCharToMultiByte(CP_UTF8, 0, &input_char, 1, utf8_encoded, 64, NULL, NULL);
 
-	NvimSendModifiedInput(nvim, utf8_encoded, true);
+	NvimSendModifiedInput(nvim, utf8_encoded);
 }
 
 void NvimSendInput(Nvim *nvim, const char *input_chars) {
@@ -561,7 +561,7 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 	} return false;
 	}
 
-	NvimSendModifiedInput(nvim, key, true);
+	NvimSendModifiedInput(nvim, key);
 	return true;
 }
 

@@ -218,6 +218,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
+			// Special case for forward slash and semicolon. 
+			// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
+			// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+			bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+			if(wparam == 0xBF && !shift_down) {
+				NvimSendSysChar(context->nvim, L'/');
+			}
+			if(wparam == 0xBA && !shift_down) {
+				NvimSendSysChar(context->nvim, L';');
+			}
+
+
 			// If none of the special keys were hit, process in WM_CHAR
 			if(!NvimProcessKeyDown(context->nvim, static_cast<int>(wparam))) {
 				TranslateMessage(&current_msg);
@@ -346,7 +358,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_KILLFOCUS: {
 		NvimKillFocus(context->nvim);
 	} return 0;
-	case WM_CLOSE : {
+	case WM_CLOSE: { 
 		NvimQuit(context->nvim);
 	} return 0;
 	}
