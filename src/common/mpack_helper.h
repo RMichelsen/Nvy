@@ -85,7 +85,6 @@ inline MPackMessageResult MPackExtractMessageResult(mpack_tree_t *tree) {
 	}
 	else if (message_type == MPackMessageType::Response) {
 		assert(mpack_node_array_at(root, 1).data->type == mpack_type_uint);
-		assert(mpack_node_array_at(root, 2).data->type == mpack_type_nil);
 
 		return MPackMessageResult {
 			.type = message_type,
