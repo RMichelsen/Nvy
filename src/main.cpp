@@ -430,6 +430,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 				linespace_factor = factor;
 			}
 		}
+		else if (!wcsncmp(cmd_line_args[i], L"--run", wcslen(L"--run")))
+		{
+			auto src = cmd_line_args[i];
+			auto len = wcslen(src);
+			char text[256]{ 0 };
+			std::copy(src+6, src+len, text);
+			auto ret = system(text);
+			ret = 0;
+		}
 		// Otherwise assume the argument is a filename to open
 		else {
 			size_t arg_size = wcslen(cmd_line_args[i]);
