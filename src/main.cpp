@@ -1,5 +1,8 @@
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
+#include <filesystem>
+#include <format>
+#include <optional>
 
 struct Context {
 	int start_x, start_y;
@@ -382,6 +385,61 @@ BOOL ShouldUseDarkMode()
 	return false;
 }
 
+void AutoSetCppEnv()
+{
+	auto exec = [](const std::string &cmd) -> std::optional<std::string> {
+		char buffer[128]{ 0 };
+		std::string result;
+		std::shared_ptr<FILE> pipe(_popen(cmd.c_str(), "r"), _pclose);
+		if (!pipe) return std::nullopt;
+
+		while (!feof(pipe.get())) 
+		{
+			if (fgets(buffer, 128, pipe.get()) != NULL)
+				result += buffer;
+		}
+		return result;
+	};
+
+	auto vswhere = "C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe";
+	if (!std::filesystem::exists(vswhere))
+	{
+		return;
+	}
+	auto output = exec(std::format(R"("{}" -latest -property installationPath)", vswhere));
+	if (!output)
+	{
+		return;
+	}
+	std::string vspath;
+	for (auto c : *output)
+	{
+		if (c != '\r' && c != '\n')
+		{
+			vspath.push_back(c);
+		}
+	}
+	vspath += "\\VC\\Tools\\MSVC\\";
+	std::filesystem::directory_iterator it(vspath);
+	while (!it->is_directory())
+	{
+		++it;
+	}
+	if (!it->exists())
+	{
+		return;
+	}
+	vspath = std::format("{}/bin/Hostx64/x64", it->path().generic_string());
+	if (!std::filesystem::exists(vspath + "/cl.exe"))
+	{
+		return;
+	}
+
+	std::string envpath = std::getenv("path");
+	envpath += ";" + vspath;
+	_putenv_s("path", envpath.c_str());
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
@@ -401,6 +459,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
 	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
 
+	AutoSetCppEnv();
 
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
