@@ -387,60 +387,79 @@ BOOL ShouldUseDarkMode()
 
 void AutoSetCppEnv()
 {
-	AllocConsole();
-	ShowWindow(GetConsoleWindow(), SW_HIDE);
-	auto exec = [](const std::string &cmd) -> std::optional<std::string> {
-		char buffer[128]{ 0 };
-		std::string result;
-		std::shared_ptr<FILE> pipe(_popen(cmd.c_str(), "r"), _pclose);
-		if (!pipe) return std::nullopt;
+	auto exec = [](const WCHAR * cmd) -> std::optional<std::string> {
+		SECURITY_ATTRIBUTES saAttr;
+		saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+		saAttr.bInheritHandle = TRUE;
+		saAttr.lpSecurityDescriptor = NULL;
 
-		while (!feof(pipe.get())) 
+		HANDLE g_hChildStd_IN_Rd = NULL;
+		HANDLE g_hChildStd_IN_Wr = NULL;
+		HANDLE g_hChildStd_OUT_Rd = NULL;
+		HANDLE g_hChildStd_OUT_Wr = NULL;
+
+		CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &saAttr, 0);
+		SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0);
+		CreatePipe(&g_hChildStd_IN_Rd, &g_hChildStd_IN_Wr, &saAttr, 0);
+		SetHandleInformation(g_hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0);
+
+		PROCESS_INFORMATION piProcInfo; 
+		STARTUPINFO siStartInfo;
+		ZeroMemory( &piProcInfo, sizeof(PROCESS_INFORMATION) );
+		ZeroMemory( &siStartInfo, sizeof(STARTUPINFO) );
+		siStartInfo.cb = sizeof(STARTUPINFO); 
+		siStartInfo.hStdError = g_hChildStd_OUT_Wr;
+		siStartInfo.hStdOutput = g_hChildStd_OUT_Wr;
+		siStartInfo.hStdInput = g_hChildStd_IN_Rd;
+		siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+ 
+		auto bSuccess = CreateProcess(NULL, (WCHAR*)cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &siStartInfo, &piProcInfo);
+		if (bSuccess)
 		{
-			if (fgets(buffer, 128, pipe.get()) != NULL)
-				result += buffer;
-		}
-		return result;
+			CloseHandle(piProcInfo.hProcess);
+			CloseHandle(piProcInfo.hThread);
+			CloseHandle(g_hChildStd_OUT_Wr);
+			CloseHandle(g_hChildStd_IN_Rd);
+		};
+
+		DWORD dwRead = 0;
+		CHAR chBuf[4096];
+		std::string output;
+		for (;;)
+		{
+			bSuccess = ReadFile(g_hChildStd_OUT_Rd, chBuf, 4096, &dwRead, NULL);
+			if (!bSuccess || dwRead == 0) break;
+			output += std::string(chBuf, dwRead);
+		};
+
+		auto it = std::remove_if(output.begin(), output.end(), [](auto c) {
+			return c == '\r' || c == '\n';
+		});
+		output.erase(it, output.end());
+		return output;
 	};
 
-	auto vswhere = "C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe";
-	if (!std::filesystem::exists(vswhere))
-	{
-		return;
-	}
-	auto output = exec(std::format(R"("{}" -latest -property installationPath)", vswhere));
-	if (!output)
-	{
-		return;
-	}
-	std::string vspath;
-	for (auto c : *output)
-	{
-		if (c != '\r' && c != '\n')
-		{
-			vspath.push_back(c);
-		}
-	}
+	auto vswhere = L"C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe";
+	if (!std::filesystem::exists(vswhere)) return;
+
+	auto output = exec(std::format(L"\"{}\" -latest -property installationPath", vswhere).c_str());
+	if (!output) return;
+
+	std::string vspath(*output);
 	vspath += "\\VC\\Tools\\MSVC\\";
 	std::filesystem::directory_iterator it(vspath);
 	while (!it->is_directory())
 	{
 		++it;
 	}
-	if (!it->exists())
-	{
-		return;
-	}
+	if (!it->exists()) return;
+
 	vspath = std::format("{}/bin/Hostx64/x64", it->path().generic_string());
-	if (!std::filesystem::exists(vspath + "/cl.exe"))
-	{
-		return;
-	}
+	if (!std::filesystem::exists(vspath + "/cl.exe")) return;
 
 	std::string envpath = std::getenv("path");
 	envpath += ";" + vspath;
 	_putenv_s("path", envpath.c_str());
-	FreeConsole();
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
