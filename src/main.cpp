@@ -387,6 +387,8 @@ BOOL ShouldUseDarkMode()
 
 void AutoSetCppEnv()
 {
+	AllocConsole();
+	ShowWindow(GetConsoleWindow(), SW_HIDE);
 	auto exec = [](const std::string &cmd) -> std::optional<std::string> {
 		char buffer[128]{ 0 };
 		std::string result;
@@ -438,6 +440,7 @@ void AutoSetCppEnv()
 	std::string envpath = std::getenv("path");
 	envpath += ";" + vspath;
 	_putenv_s("path", envpath.c_str());
+	FreeConsole();
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
