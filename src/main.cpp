@@ -16,6 +16,7 @@ struct Context {
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
+	WCHAR locale[LOCALE_NAME_MAX_LENGTH];
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -164,6 +165,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 		SendResizeIfNecessary(context, rows, cols);
 	} return 0;
+	case WM_INPUTLANGCHANGE: {
+		HKL hkl = (HKL)lparam;
+		LCIDToLocaleName(MAKELCID(LOWORD(HandleToUlong(hkl)), SORT_DEFAULT), context->locale, LOCALE_NAME_MAX_LENGTH, 0);
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	}
 	case WM_DEADCHAR:
 	case WM_SYSDEADCHAR: {
 		context->dead_char_pending = true;
@@ -221,15 +227,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
-			// Special case for forward slash and semicolon. 
+			// Special case for forward slash and semicolon.
 			// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
 			// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-			bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-			if(wparam == 0xBF && !shift_down) {
-				NvimSendSysChar(context->nvim, L'/');
-			}
-			if(wparam == 0xBA && !shift_down) {
-				NvimSendSysChar(context->nvim, L';');
+			if(!wcscmp(context->locale, L"en-US")) {
+				bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+				if(wparam == 0xBF && !shift_down) {
+					NvimSendSysChar(context->nvim, L'/');
+				}
+				if(wparam == 0xBA && !shift_down) {
+					NvimSendSysChar(context->nvim, L';');
+				}
 			}
 
 
@@ -494,6 +502,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
+	GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SNAME, context.locale, LOCALE_NAME_MAX_LENGTH);
 	RECT window_rect;
 	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
 	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
