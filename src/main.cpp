@@ -196,6 +196,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
 			ToggleFullscreen(hwnd, context);
 		}
+		else if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_F4) {
+			NvimQuit(context->nvim);
+		}
 		else {
 			LONG msg_pos = GetMessagePos();
 			POINTS pt = MAKEPOINTS(msg_pos);
