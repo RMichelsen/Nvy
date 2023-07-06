@@ -865,58 +865,62 @@ void UpdateCursorModeInfos(Renderer *renderer, mpack_node_t mode_info_set_params
 }
 
 void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
-	mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, 1);
+	size_t scroll_count = mpack_node_array_length(scroll_region);
 
-	int64_t top = mpack_node_array_at(scroll_region_params, 1).data->value.i;
-	int64_t bottom = mpack_node_array_at(scroll_region_params, 2).data->value.i;
-	int64_t left = mpack_node_array_at(scroll_region_params, 3).data->value.i;
-	int64_t right = mpack_node_array_at(scroll_region_params, 4).data->value.i;
-	int64_t rows = mpack_node_array_at(scroll_region_params, 5).data->value.i;
-	int64_t cols = mpack_node_array_at(scroll_region_params, 6).data->value.i;
+	for (size_t i = 1; i < scroll_count; ++i) {
+		mpack_node_t scroll_region_params = mpack_node_array_at(scroll_region, i);
 
-	// Currently nvim does not support horizontal scrolling, 
-	// the parameter is reserved for later use
-	assert(cols == 0);
+		int64_t top = mpack_node_array_at(scroll_region_params, 1).data->value.i;
+		int64_t bottom = mpack_node_array_at(scroll_region_params, 2).data->value.i;
+		int64_t left = mpack_node_array_at(scroll_region_params, 3).data->value.i;
+		int64_t right = mpack_node_array_at(scroll_region_params, 4).data->value.i;
+		int64_t rows = mpack_node_array_at(scroll_region_params, 5).data->value.i;
+		int64_t cols = mpack_node_array_at(scroll_region_params, 6).data->value.i;
 
-	// This part is slightly cryptic, basically we're just
-	// iterating from top to bottom or vice versa depending on scroll direction.
-	bool scrolling_down = rows > 0;
-	int64_t start_row = scrolling_down ? top : bottom - 1;
-	int64_t end_row = scrolling_down ? bottom - 1 : top;
-	int64_t increment = scrolling_down ? 1 : -1;
+		// Currently nvim does not support horizontal scrolling, 
+		// the parameter is reserved for later use
+		assert(cols == 0);
 
-	for (int64_t i = start_row; scrolling_down ? i <= end_row : i >= end_row; i += increment) {
-		// Clip anything outside the scroll region
-		int64_t target_row = i - rows;
-		if (target_row < top || target_row >= bottom) {
-			continue;
+		// This part is slightly cryptic, basically we're just
+		// iterating from top to bottom or vice versa depending on scroll direction.
+		bool scrolling_down = rows > 0;
+		int64_t start_row = scrolling_down ? top : bottom - 1;
+		int64_t end_row = scrolling_down ? bottom - 1 : top;
+		int64_t increment = scrolling_down ? 1 : -1;
+
+		for (int64_t j = start_row; scrolling_down ? j <= end_row : j >= end_row; j += increment) {
+			// Clip anything outside the scroll region
+			int64_t target_row = j - rows;
+			if (target_row < top || target_row >= bottom) {
+				continue;
+			}
+
+			memcpy(
+				&renderer->grid_chars[target_row * renderer->grid_cols + left],
+				&renderer->grid_chars[j * renderer->grid_cols + left],
+				(right - left) * sizeof(wchar_t)
+			);
+
+			memcpy(
+				&renderer->grid_cell_properties[target_row * renderer->grid_cols + left],
+				&renderer->grid_cell_properties[j * renderer->grid_cols + left],
+				(right - left) * sizeof(CellProperty)
+			);
+
+			// Sadly I have given up on making use of IDXGISwapChain1::Present1
+			// scroll_rects or bitmap copies. The former seems insufficient for
+			// nvim since it can require multiple scrolls per frame, the latter
+			// I can't seem to make work with the FLIP_SEQUENTIAL swapchain model.
+			// Thus we fall back to drawing the appropriate scrolled grid lines
+			DrawGridLine(renderer, target_row);
 		}
 
-		memcpy(
-			&renderer->grid_chars[target_row * renderer->grid_cols + left],
-			&renderer->grid_chars[i * renderer->grid_cols + left],
-			(right - left) * sizeof(wchar_t)
-		);
-
-		memcpy(
-			&renderer->grid_cell_properties[target_row * renderer->grid_cols + left],
-			&renderer->grid_cell_properties[i * renderer->grid_cols + left],
-			(right - left) * sizeof(CellProperty)
-		);
-
-		// Sadly I have given up on making use of IDXGISwapChain1::Present1
-		// scroll_rects or bitmap copies. The former seems insufficient for
-		// nvim since it can require multiple scrolls per frame, the latter
-		// I can't seem to make work with the FLIP_SEQUENTIAL swapchain model.
-		// Thus we fall back to drawing the appropriate scrolled grid lines
-		DrawGridLine(renderer, target_row);
-	}
-
-	// Redraw the line which the cursor has moved to, as it is no
-	// longer guaranteed that the cursor is still there
-	int cursor_row = renderer->cursor.row - rows;
-	if(cursor_row >= 0 && cursor_row < renderer->grid_rows) {
-		DrawGridLine(renderer, cursor_row);
+		// Redraw the line which the cursor has moved to, as it is no
+		// longer guaranteed that the cursor is still there
+		int cursor_row = renderer->cursor.row - rows;
+		if(cursor_row >= 0 && cursor_row < renderer->grid_rows) {
+			DrawGridLine(renderer, cursor_row);
+		}
 	}
 }
 
