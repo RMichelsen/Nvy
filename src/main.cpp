@@ -227,16 +227,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
-			// Special case for forward slash and semicolon.
-			// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
-			// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-			if(!wcscmp(context->locale, L"en-US")) {
-				bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-				if(wparam == 0xBF && !shift_down) {
-					NvimSendSysChar(context->nvim, L'/');
+			bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
+			if (!shift_down) {
+				// Allow Nvim to recognize <C-[0-9]>.
+				// 0x30 is the virtual key code for 0, 0x39 is the virtual key code for 9, and the other numbers are in-between.
+				if(0x30 <= wparam && wparam <= 0x39) {
+					NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
 				}
-				if(wparam == 0xBA && !shift_down) {
-					NvimSendSysChar(context->nvim, L';');
+
+				// Special case for forward slash and semicolon.
+				// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
+				// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+				if(!wcscmp(context->locale, L"en-US")) {
+					if(wparam == 0xBF) {
+						NvimSendSysChar(context->nvim, L'/');
+					}
+					if(wparam == 0xBA) {
+						NvimSendSysChar(context->nvim, L';');
+					}
 				}
 			}
 
