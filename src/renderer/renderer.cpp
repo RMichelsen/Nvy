@@ -728,7 +728,7 @@ void DrawCursor(Renderer *renderer) {
 	cursor_hl_attribs.flags = under_cursor_hl_attribs.flags;
 
 	if (renderer->cursor.mode_info->hl_attrib_id == 0) {
-		cursor_hl_attribs.flags ^= HL_ATTRIB_REVERSE;
+		cursor_hl_attribs.flags |= HL_ATTRIB_REVERSE;
 	}
 
 	D2D1_RECT_F cursor_rect {
