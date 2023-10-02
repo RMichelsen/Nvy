@@ -16,7 +16,6 @@ struct Context {
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
-	WCHAR locale[LOCALE_NAME_MAX_LENGTH];
 	HKL hkl;
 };
 
@@ -169,7 +168,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_INPUTLANGCHANGE: {
 		HKL hkl = (HKL)lparam;
 		context->hkl = hkl;
-		LCIDToLocaleName(MAKELCID(LOWORD(HandleToUlong(hkl)), SORT_DEFAULT), context->locale, LOCALE_NAME_MAX_LENGTH, 0);
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	}
 	case WM_DEADCHAR:
@@ -497,7 +495,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SNAME, context.locale, LOCALE_NAME_MAX_LENGTH);
 	context.hkl = GetKeyboardLayout(0);
 	RECT window_rect;
 	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
