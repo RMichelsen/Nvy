@@ -105,7 +105,9 @@ struct Renderer {
 	bool grid_initialized;
 	int grid_rows;
 	int grid_cols;
-	wchar_t *grid_chars;
+	uint32_t *grid_chars;
+	wchar_t *wchar_buffer;
+	size_t wchar_buffer_length;
 	CellProperty *grid_cell_properties;
 
 	HWND hwnd;
