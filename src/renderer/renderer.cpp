@@ -723,9 +723,13 @@ void DrawGridLines(Renderer *renderer, mpack_node_t grid_lines) {
 					if (wstrlen == 2) {
 						// If the str takes two wchars, it must be a surrogate pair.
 						bool is_surrogate_pair = IsSurrogatePair(buffer[0], buffer[1]);
-						assert(is_surrogate_pair);
-						// Pack the surrogate pair into a single grid cell.
-						renderer->grid_chars[offset] = (buffer[0] << 16) | buffer[1];
+						if (is_surrogate_pair) {
+							// Pack the surrogate pair into a single grid cell.
+							renderer->grid_chars[offset] = (buffer[0] << 16) | buffer[1];
+						} else {
+							// This is an unsupported character (ie: a diacritic), draw a box here instead.
+							renderer->grid_chars[offset] = 0x25a1;
+						}
 					} else {
 						renderer->grid_chars[offset] = buffer[0];
 					}
@@ -940,7 +944,7 @@ void ScrollRegion(Renderer *renderer, mpack_node_t scroll_region) {
 			memcpy(
 				&renderer->grid_chars[target_row * renderer->grid_cols + left],
 				&renderer->grid_chars[j * renderer->grid_cols + left],
-				(right - left) * sizeof(wchar_t)
+				(right - left) * sizeof(uint32_t)
 			);
 
 			memcpy(
