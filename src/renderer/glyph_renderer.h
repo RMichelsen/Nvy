@@ -38,6 +38,9 @@ struct GlyphRenderer : public IDWriteTextRenderer {
 	HRESULT DrawInlineObject(void *client_drawing_context, float origin_x, float origin_y, IDWriteInlineObject *inline_obj,
 		BOOL is_sideways, BOOL is_right_to_left, IUnknown *client_drawing_effect) noexcept override;
 
+	HRESULT DrawLine(void *client_drawing_context, float baseline_origin_x, float baseline_origin_y,
+		FLOAT offset, FLOAT width, FLOAT thickness, IUnknown *client_drawing_effect, bool use_special_color) noexcept;
+
 	HRESULT DrawStrikethrough(void *client_drawing_context, float baseline_origin_x, float baseline_origin_y,
 		DWRITE_STRIKETHROUGH const *strikethrough, IUnknown *client_drawing_effect) noexcept override;
 
