@@ -16,7 +16,7 @@ struct Context {
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
-	WCHAR locale[LOCALE_NAME_MAX_LENGTH];
+	HKL hkl;
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -167,7 +167,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	} return 0;
 	case WM_INPUTLANGCHANGE: {
 		HKL hkl = (HKL)lparam;
-		LCIDToLocaleName(MAKELCID(LOWORD(HandleToUlong(hkl)), SORT_DEFAULT), context->locale, LOCALE_NAME_MAX_LENGTH, 0);
+		context->hkl = hkl;
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	}
 	case WM_DEADCHAR:
@@ -227,27 +227,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
-			bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-			if (!shift_down) {
-				// Allow Nvim to recognize <C-[0-9]>.
-				// 0x30 is the virtual key code for 0, 0x39 is the virtual key code for 9, and the other numbers are in-between.
-				if(0x30 <= wparam && wparam <= 0x39) {
-					NvimSendSysChar(context->nvim, static_cast<wchar_t>(wparam));
-				}
-
-				// Special case for forward slash and semicolon.
-				// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
-				// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-				if(!wcscmp(context->locale, L"en-US")) {
-					if(wparam == 0xBF) {
-						NvimSendSysChar(context->nvim, L'/');
-					}
-					if(wparam == 0xBA) {
-						NvimSendSysChar(context->nvim, L';');
-					}
-				}
+			bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+			wchar_t wchar = static_cast<wchar_t>(MapVirtualKeyEx(wparam, MAPVK_VK_TO_CHAR, context->hkl));
+			if (ctrl_down && wchar) {
+				NvimSendSysChar(context->nvim, wchar);
+				return 0;
 			}
-
 
 			// If none of the special keys were hit, process in WM_CHAR
 			if(!NvimProcessKeyDown(context->nvim, static_cast<int>(wparam))) {
@@ -510,7 +495,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
-	GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SNAME, context.locale, LOCALE_NAME_MAX_LENGTH);
+	context.hkl = GetKeyboardLayout(0);
 	RECT window_rect;
 	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
 	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
