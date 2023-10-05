@@ -11,13 +11,13 @@ struct Context {
 	Renderer *renderer;
 	bool dead_char_pending;
 	bool xbuttons[2];
+	float buffered_scroll_amount;
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
 	HKL hkl;
-	float buffered_scroll_amount;
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -330,7 +330,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			action = MouseAction::MouseWheelDown;
 		}
 
-		while (abs(context->buffered_scroll_amount) > 1.0f) { 
+		while (abs(context->buffered_scroll_amount) >= 1.0f) {
 			if (should_resize_font) {
 				RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
 				auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
