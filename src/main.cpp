@@ -11,6 +11,7 @@ struct Context {
 	Renderer *renderer;
 	bool dead_char_pending;
 	bool xbuttons[2];
+	float buffered_scroll_amount;
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
 	UINT saved_dpi_scaling;
@@ -317,19 +318,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		ScreenToClient(hwnd, &client_point);
 
 		float scroll_amount = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
-		MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp : MouseAction::MouseWheelDown;
+		context->buffered_scroll_amount += scroll_amount;
 
-		if (should_resize_font) {
-			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
-				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			SendResizeIfNecessary(context, rows, cols);
+		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
+
+		MouseAction action;
+		if (context->buffered_scroll_amount > 0.0) {
+			scroll_amount = 1.0f;
+			action = MouseAction::MouseWheelUp;
+		} else {
+			scroll_amount = -1.0f;
+			action = MouseAction::MouseWheelDown;
 		}
-		else {
-			for (int i = 0; i < abs(scroll_amount); ++i) {
-				NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, row, col);
+
+		while (abs(context->buffered_scroll_amount) >= 1.0f) {
+			if (should_resize_font) {
+				RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
+				auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
+					context->renderer->pixel_size.width, context->renderer->pixel_size.height);
+				SendResizeIfNecessary(context, rows, cols);
 			}
+			else {
+				for (int i = 0; i < abs(scroll_amount); ++i) {
+					NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, row, col);
+				}
+			}
+
+			context->buffered_scroll_amount -= scroll_amount;
 		}
 	} return 0;
 	case WM_DROPFILES: {
