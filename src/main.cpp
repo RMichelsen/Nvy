@@ -227,9 +227,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
+			bool altgr_down = (GetKeyState(VK_RMENU) & 0x80) != 0;
 			bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 			wchar_t wchar = static_cast<wchar_t>(MapVirtualKeyEx(wparam, MAPVK_VK_TO_CHAR, context->hkl));
-			if (ctrl_down && wchar) {
+			if (!altgr_down && ctrl_down && wchar) {
 				NvimSendSysChar(context->nvim, wchar);
 				return 0;
 			}
