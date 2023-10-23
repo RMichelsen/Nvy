@@ -21,10 +21,15 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 	return bytes_read;
 }
 
+struct NvimMsgBroker {
+	Nvim *nvim;
+	mpack_tree_t *tree;
+};
+
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
-	Nvim *nvim = static_cast<Nvim *>(param);
-	mpack_tree_t *tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
-	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, Megabytes(20), 1024 * 1024);
+	NvimMsgBroker *broker = static_cast<NvimMsgBroker*>(param);
+	auto [nvim, tree] = *broker;
+	free(broker);
 
 	while (true) {
 		mpack_tree_parse(tree);
@@ -99,31 +104,32 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	);
 	AssignProcessToJobObject(job_object, nvim->process_info.hProcess);
 
-	DWORD _;
-	CreateThread(
-		nullptr,
-		0,
-		NvimMessageHandler,
-		nvim,
-		0,
-		&_
-	);
-	CreateThread(
-		nullptr,
-		0, NvimProcessMonitor,
-		nvim,
-		0, &_
-	);
+	// Do the initial messages with nvim in sync
 
-	// Query api info
+	mpack_tree_t *tree_reader = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+	mpack_tree_init_stream(tree_reader, ReadFromNvim, nvim->stdout_read, Megabytes(20), 1'048'576);
+
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
+	// Query api info
 	MPackStartRequest(RegisterRequest(nvim, vim_get_api_info), NVIM_REQUEST_NAMES[vim_get_api_info], &writer);
 	mpack_start_array(&writer, 0);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
+	mpack_tree_parse(tree_reader);
+	if (mpack_tree_error(tree_reader)) {
+		return;
+	}
+	MPackMessageResult result = MPackExtractMessageResult(tree_reader);
+	if (result.type == MPackMessageType::Response){
+		mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
+		mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
+		int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
+		assert(api_level > 6);
+	}
 
 	// Set g:nvy global variable
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
@@ -135,14 +141,45 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 
-	// Query stdpath to find the users init.vim
+	// Setup neovim to send a blocking request so we can finalize seting up before
+	// buffer
 	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
-	MPackStartRequest(RegisterRequest(nvim, nvim_eval), NVIM_REQUEST_NAMES[nvim_eval], &writer);
+	MPackStartRequest(RegisterRequest(nvim, nvim_command), NVIM_REQUEST_NAMES[nvim_command], &writer);
 	mpack_start_array(&writer, 1);
-	mpack_write_cstr(&writer, "stdpath('config')");
+	mpack_write_cstr(&writer, "autocmd VimEnter * call rpcrequest(1, 'vimenter')");
 	mpack_finish_array(&writer);
 	size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
+	mpack_tree_parse(tree_reader);
+	if (mpack_tree_error(tree_reader)) {
+		return;
+	}
+	result = MPackExtractMessageResult(tree_reader); // get the result just in case...
+
+	// send the tree reader to the broker to be used by the stdout reader thread
+	NvimMsgBroker *broker = static_cast<NvimMsgBroker*>(malloc(sizeof(NvimMsgBroker)));
+	if (broker) {
+		broker->nvim = nvim;
+		broker->tree = tree_reader;
+
+		DWORD _;
+		CreateThread(
+			nullptr,
+			0,
+			NvimMessageHandler,
+			broker,
+			0,
+			&_
+		);
+		CreateThread(
+			nullptr,
+			0,
+			NvimProcessMonitor,
+			nvim,
+			0,
+			&_
+		);
+	}
 }
 
 void NvimShutdown(Nvim *nvim) {
@@ -154,77 +191,10 @@ void NvimShutdown(Nvim *nvim) {
 		CloseHandle(nvim->stdin_write);
 		CloseHandle(nvim->stdout_read);
 		CloseHandle(nvim->stdout_write);
-		CloseHandle(nvim->process_info.hThread);
 		TerminateProcess(nvim->process_info.hProcess, 0);
 		CloseHandle(nvim->process_info.hProcess);
+		CloseHandle(nvim->process_info.hThread);
 	}
-}
-
-void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out) {
-	char path[MAX_PATH];
-	const char *config_path = mpack_node_str(config_node);
-	size_t config_path_strlen = mpack_node_strlen(config_node);
-	strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
-	strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
-
-	HANDLE config_file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-	if (config_file == INVALID_HANDLE_VALUE) {
-		return;
-	}
-
-	char *buffer;
-	LARGE_INTEGER file_size;
-	if (!GetFileSizeEx(config_file, &file_size)) {
-		CloseHandle(config_file);
-		return;
-	}
-	buffer = static_cast<char *>(malloc(file_size.QuadPart));
-
-	DWORD bytes_read;
-	if (!ReadFile(config_file, buffer, file_size.QuadPart, &bytes_read, NULL)) {
-		CloseHandle(config_file);
-		free(buffer);
-		return;
-	}
-	CloseHandle(config_file);
-
-	char *strtok_context;
-	char *line = strtok_s(buffer, "\r\n", &strtok_context);
-	while (line) {
-		char *guifont = strstr(line, "set guifont=");
-		if (guifont) {
-			// Check if we're inside a comment
-			int leading_count = guifont - line;
-			bool inside_comment = false;
-			for (int i = 0; i < leading_count; ++i) {
-				if (line[i] == '"') {
-					inside_comment = !inside_comment;
-				}
-			}
-			if (!inside_comment) {
-				guifont_out->clear();
-
-				int line_offset = (guifont - line + strlen("set guifont="));
-				int guifont_strlen = strlen(line) - line_offset;
-				int escapes = 0;
-				for (int i = 0; i < guifont_strlen; ++i) {
-					if (line[line_offset + i] == '\\' && i < (guifont_strlen - 1) && line[line_offset + i + 1] == ' ') {
-						guifont_out->push_back(' ');
-						++i;
-						continue;
-					}
-					guifont_out->push_back(line[i + line_offset]);
-
-				}
-				guifont_out->push_back('\0');
-			}
-		}
-		line = strtok_s(NULL, "\r\n", &strtok_context);
-	}
-
-	free(buffer);
 }
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {
@@ -573,6 +543,20 @@ void NvimSendCommand(Nvim *nvim, const char *command) {
 	mpack_start_array(&writer, 1);
 	mpack_write_cstr(&writer, command);
 	mpack_finish_array(&writer);
+	size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimSendResponse(Nvim *nvim, int64_t req_id) {
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+
+	mpack_start_array(&writer, 4);
+	mpack_write_i64(&writer, 1);
+	mpack_write_i64(&writer, req_id);
+	mpack_write_nil(&writer);
+	mpack_write_int(&writer, 0);
 	size_t size = MPackFinishMessage(&writer);
 	MPackSendData(nvim->stdin_write, data, size);
 }

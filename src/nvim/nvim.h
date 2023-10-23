@@ -67,6 +67,7 @@ void NvimSendSysChar(Nvim *nvim, wchar_t sys_char);
 void NvimSendInput(Nvim *nvim, const char* input_chars);
 void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);
+void NvimSendResponse(Nvim *nvim, int64_t req_id);
 bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);
 void NvimOpenFile(Nvim *nvim, const wchar_t *file_name, bool open_new_buffer = false);
 void NvimSetFocus(Nvim *nvim);
