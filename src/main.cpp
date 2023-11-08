@@ -6,6 +6,7 @@ struct Context {
 	GridSize start_grid_size;
 	bool start_maximized;
 	bool start_fullscreen;
+    bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -200,7 +201,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		// Special case for <ALT+ENTER> (fullscreen transition)
-		if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
+		if (!context->disable_fullscreen && ((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_F4) {
@@ -407,6 +408,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
+    bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
 	int64_t rows = 0;
 	int64_t cols = 0;
@@ -429,6 +431,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		}
 		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {
 			disable_ligatures = true;
+		}
+		else if(!wcscmp(cmd_line_args[i], L"--disable-fullscreen")) {
+			disable_fullscreen = true;
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
 			wchar_t *end_ptr;
@@ -489,7 +494,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		},
 		.start_maximized = start_maximized,
 		.start_fullscreen = start_fullscreen,
-
+        .disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
 		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
