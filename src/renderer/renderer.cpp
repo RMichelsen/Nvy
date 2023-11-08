@@ -554,6 +554,7 @@ void DrawGridLine(Renderer *renderer, int row) {
 		rect.bottom - rect.top,
 		&temp_text_layout
 	));
+    size_t grid_chars_length = renderer->wchar_buffer_length;
 	IDWriteTextLayout1 *text_layout;
 	temp_text_layout->QueryInterface<IDWriteTextLayout1>(&text_layout);
 	temp_text_layout->Release();
@@ -621,13 +622,13 @@ void DrawGridLine(Renderer *renderer, int row) {
 	D2D1_RECT_F last_rect = rect;
 	last_rect.left = col_offset * renderer->font_width;
 	DrawBackgroundRect(renderer, last_rect, &renderer->hl_attribs[hl_attrib_id]);
-	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset_wchars, renderer->wchar_buffer_length);
+	ApplyHighlightAttributes(renderer, &renderer->hl_attribs[hl_attrib_id], text_layout, col_offset_wchars, grid_chars_length);
 
 	renderer->d2d_context->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
 	if(renderer->disable_ligatures) {
 		text_layout->SetTypography(renderer->dwrite_typography, DWRITE_TEXT_RANGE { 
 			.startPosition = 0, 
-			.length = static_cast<uint32_t>(renderer->wchar_buffer_length)
+			.length = static_cast<uint32_t>(grid_chars_length)
 		});
 	}
 	text_layout->Draw(renderer, renderer->glyph_renderer, 0.0f, rect.top);
