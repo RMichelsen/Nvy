@@ -29,7 +29,8 @@ Nvy can be started with the following flags:
 
 - You can use Alt+Enter to toggle fullscreen
 - You can use Ctrl+Mousewheel to zoom
-- You can drag files onto Nvy to open them
+- You can drag files onto Nvy to open them (:e)
+- Dragging files while holding Ctrl opens them in a new window (:new)
 
 ## Releases
 
