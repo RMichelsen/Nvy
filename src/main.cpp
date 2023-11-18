@@ -82,7 +82,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			// nvim has read user init file, we can now request info if we want
 			// like additional startup settings or something else
 			NvimSendResponse(context->nvim, result.request.msg_id);
-            NvimQueryConfig(context->nvim);
+			NvimQueryConfig(context->nvim);
 		}
 	} break;
 	}
@@ -389,11 +389,10 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	int64_t start_pos_x = CW_USEDEFAULT;
 	int64_t start_pos_y = CW_USEDEFAULT;
 
-	struct WArg {
-		wchar_t *arg;
-		size_t len;
-	};
-	Vec<WArg> nvim_args;
+	static constexpr const wchar_t *NVIM_CMD = L"nvim --embed";
+	size_t nvim_cmd_len = wcslen(NVIM_CMD);
+	wchar_t* nvim_cmd = static_cast<wchar_t *>(calloc(nvim_cmd_len + 1, sizeof(wchar_t)));
+	wmemcpy_s(nvim_cmd, nvim_cmd_len + 1, NVIM_CMD, nvim_cmd_len + 1);
 
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
@@ -426,12 +425,23 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 				linespace_factor = factor;
 			}
 		}
-		// Otherwise assume the argument is a filename to open
 		else {
-			nvim_args.push_back(WArg{
-				.arg = cmd_line_args[i],
-				.len = wcslen(cmd_line_args[i])
-			});
+			// Otherwise assume switch is for nvim initialization
+			const size_t arg_len = wcslen(cmd_line_args[i]) + 1 /* space */;
+			if (nvim_cmd_len + arg_len >= 32767) {
+				MessageBoxA(NULL, "ERROR: File path too long", "Nvy", MB_OK | MB_ICONERROR);
+				return 1;
+			}
+			wchar_t *tmp = static_cast<wchar_t *>(realloc(nvim_cmd, sizeof(wchar_t) * (nvim_cmd_len + arg_len + 1)));
+			if (tmp) {
+				nvim_cmd = tmp;
+				nvim_cmd[nvim_cmd_len] = L' ';
+				wmemcpy_s(nvim_cmd + nvim_cmd_len + 1, arg_len, cmd_line_args[i], arg_len);
+				nvim_cmd_len += arg_len;
+				nvim_cmd[nvim_cmd_len] = 0;
+			} else {
+				break; // not enough memory to continue
+			}
 		}
 	}
 
@@ -489,19 +499,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &should_use_dark_mode, sizeof(BOOL));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 
-	// Prepare nvim command line
-	size_t nvim_command_len = wcslen(L"nvim --embed");
-	for (const auto& nvim_command_arg : nvim_args) {
-		nvim_command_len += wcslen(L" \"\"") + nvim_command_arg.len;
-	}
-	wchar_t *nvim_command_line = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (nvim_command_len + 1)));
-	int cur_len = _snwprintf_s(nvim_command_line, nvim_command_len + 1, nvim_command_len, L"nvim --embed");
-	for (const auto& [arg, len] : nvim_args) {
-		cur_len += _snwprintf_s(nvim_command_line + cur_len, nvim_command_len + 1 - cur_len, nvim_command_len - cur_len,
-			L" \"%s\"", arg, static_cast<uint32_t>(len)); 
-	}
-
-	NvimInitialize(&nvim, nvim_command_line, hwnd);
+	NvimInitialize(&nvim, nvim_cmd, hwnd);
+	free(nvim_cmd);
 
 	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
 	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
@@ -526,8 +525,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	// Attach the renderer now that the window size is determined
 	RendererAttach(context.renderer);
-    auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
-                                                 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
+	auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
+		context.renderer->pixel_size.width, context.renderer->pixel_size.height);
 	NvimSendUIAttach(context.nvim, rows, cols);
 
 	MSG msg;
@@ -549,9 +548,37 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	RendererShutdown(&renderer);
 	NvimShutdown(&nvim);
+
+	if (nvim.exit_code != EXIT_SUCCESS) {
+		// We'll generate a message from the error stdout
+		size_t cap = 512;
+		DWORD len = 0; 
+		char *msg = static_cast<char *>(calloc(cap, 1));
+		while (true) {
+			// nvim outputs directly in double byte on error on windows
+			char buffer[1024 * 4];
+			DWORD read = 0;
+			if (!ReadFile(nvim.stderr_read, buffer, sizeof(buffer) - 1, &read, NULL)) {
+				break;
+			}
+			if (!read) { continue; }
+			buffer[read] = 0;
+			char *tmp = static_cast<char *>(realloc(msg, size_t(read) + len + 1));
+			if (!tmp) { break; } // no more memory... bail out
+			msg = tmp;
+			memcpy_s(msg + len, read, buffer, read);
+			len += read;
+			msg[len] = 0;
+		}
+		if (len > 0) {
+			MessageBoxA(NULL, msg, "Nvy", MB_OK | MB_ICONERROR);
+			free(msg);
+		}
+
+	}
+
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
-	free(nvim_command_line);
 
 	return nvim.exit_code;
 }

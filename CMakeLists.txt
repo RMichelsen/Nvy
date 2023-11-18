@@ -50,6 +50,7 @@ target_precompile_headers(Nvy PUBLIC
     <cmath>
     <cstdint>
     <cstdio>
+    <cwchar>
     <windows.h>
     <d3d11_4.h>
     <d2d1_3.h>

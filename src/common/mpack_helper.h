@@ -59,10 +59,9 @@ inline void MPackStartNotification(const char *notification, mpack_writer_t *wri
 	return size;
 }
 
-inline void MPackSendData(HANDLE handle, void *buffer, size_t size) {
+inline bool MPackSendData(HANDLE handle, void *buffer, size_t size) {
 	DWORD bytes_written;
-	bool success = WriteFile(handle, buffer, static_cast<DWORD>(size), &bytes_written, nullptr);
-	assert(success);
+	return WriteFile(handle, buffer, static_cast<DWORD>(size), &bytes_written, nullptr) != 0;
 }
 
 inline MPackMessageResult MPackExtractMessageResult(mpack_tree_t *tree) {
