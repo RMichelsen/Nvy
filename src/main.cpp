@@ -3,6 +3,8 @@
 
 struct Context {
 	bool start_maximized;
+	bool start_fullscreen;
+    bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -46,8 +48,24 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	case MPackMessageType::Response: {
 		assert(result.response.msg_id <= context->nvim->next_msg_id);
 		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
+		case NvimRequest::nvim_eval: {
+			Vec<char> guifont_buffer;
+			NvimParseConfig(context->nvim, result.params, &guifont_buffer);
+			if (!guifont_buffer.empty()) {
+				bool updated = RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
+				if(!updated) {
+					guifont_buffer[guifont_buffer.size() - 1] = '"';
+					guifont_buffer.push_back('\0');
+					const char *error = "echom \"Unknown font: ";
+					char *command = static_cast<char *>(malloc(strlen(error) + guifont_buffer.size()));
+					memcpy(command, error, strlen(error));
+					memcpy(command + strlen(error), guifont_buffer.data(), guifont_buffer.size());
+					NvimSendCommand(context->nvim, command);
+					free(command);
+				}
+			}
+        } break;
 		case NvimRequest::vim_get_api_info:
-		case NvimRequest::nvim_eval:
 		case NvimRequest::nvim_input:
 		case NvimRequest::nvim_input_mouse:
 		case NvimRequest::nvim_command: {
@@ -64,6 +82,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			// nvim has read user init file, we can now request info if we want
 			// like additional startup settings or something else
 			NvimSendResponse(context->nvim, result.request.msg_id);
+            NvimQueryConfig(context->nvim);
 		}
 	} break;
 	}
@@ -156,7 +175,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		// Special case for <ALT+ENTER> (fullscreen transition)
-		if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
+		if (!context->disable_fullscreen && ((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_F4) {
@@ -363,6 +382,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
+    bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
 	int64_t start_rows = 0;
 	int64_t start_cols = 0;
@@ -385,6 +405,9 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 		}
 		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {
 			disable_ligatures = true;
+		}
+		else if(!wcscmp(cmd_line_args[i], L"--disable-fullscreen")) {
+			disable_fullscreen = true;
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
 			wchar_t *end_ptr;
@@ -433,6 +456,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	Renderer renderer {};
 	Context context {
 		.start_maximized = start_maximized,
+		.start_fullscreen = start_fullscreen,
+        .disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
 		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
@@ -501,8 +526,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	// Attach the renderer now that the window size is determined
 	RendererAttach(context.renderer);
-	auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
-																							 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
+    auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
+                                                 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
 	NvimSendUIAttach(context.nvim, rows, cols);
 
 	MSG msg;

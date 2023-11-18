@@ -57,6 +57,7 @@ struct Nvim {
 void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
+void NvimQueryConfig(Nvim *nvim);
 void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out);
 
 void NvimSendCommand(Nvim *nvim, const char *command);
@@ -65,7 +66,6 @@ void NvimSendResize(Nvim *nvim, int grid_rows, int grid_cols);
 void NvimSendChar(Nvim *nvim, wchar_t input_char);
 void NvimSendSysChar(Nvim *nvim, wchar_t sys_char);
 void NvimSendInput(Nvim *nvim, const char* input_chars);
-void NvimSendInput(Nvim *nvim, int virtual_key, int flags);
 void NvimSendMouseInput(Nvim *nvim, MouseButton button, MouseAction action, int mouse_row, int mouse_col);
 void NvimSendResponse(Nvim *nvim, int64_t req_id);
 bool NvimProcessKeyDown(Nvim *nvim, int virtual_key);

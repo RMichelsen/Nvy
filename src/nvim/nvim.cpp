@@ -28,22 +28,21 @@ struct NvimMsgBroker {
 
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
 	NvimMsgBroker *broker = static_cast<NvimMsgBroker*>(param);
-	auto [nvim, tree] = *broker;
-	free(broker);
 
 	while (true) {
-		mpack_tree_parse(tree);
-		if (mpack_tree_error(tree) != mpack_ok) {
+		mpack_tree_parse(broker->tree);
+		if (mpack_tree_error(broker->tree) != mpack_ok) {
 			break;
 		}
 
 		// Blocking, dubious thread safety. Seems to work though...
-		SendMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(tree), 0);
+        SendMessage(broker->nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(broker->tree), 0);
 	}
 
-	mpack_tree_destroy(tree);
-	free(tree);
-	PostMessage(nvim->hwnd, WM_DESTROY, 0, 0);
+	mpack_tree_destroy(broker->tree);
+	PostMessage(broker->nvim->hwnd, WM_DESTROY, 0, 0);
+	free(broker->tree);
+	free(broker);
 	return 0;
 }
 
@@ -533,6 +532,85 @@ bool NvimProcessKeyDown(Nvim *nvim, int virtual_key) {
 
 	NvimSendModifiedInput(nvim, key);
 	return true;
+}
+
+void NvimQueryConfig(Nvim *nvim) {
+	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
+	mpack_writer_t writer;
+	mpack_writer_init(&writer, data, MAX_MPACK_OUTBOUND_MESSAGE_SIZE);
+	MPackStartRequest(RegisterRequest(nvim, nvim_eval), NVIM_REQUEST_NAMES[nvim_eval], &writer);
+	mpack_start_array(&writer, 1);
+	mpack_write_cstr(&writer, "stdpath('config')");
+	mpack_finish_array(&writer);
+    size_t size = MPackFinishMessage(&writer);
+	MPackSendData(nvim->stdin_write, data, size);
+}
+
+void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out) {
+	char path[MAX_PATH];
+	const char *config_path = mpack_node_str(config_node);
+	size_t config_path_strlen = mpack_node_strlen(config_node);
+	strncpy_s(path, MAX_PATH, config_path, config_path_strlen);
+	strcat_s(path, MAX_PATH - config_path_strlen - 1, "\\init.vim");
+
+	HANDLE config_file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (config_file == INVALID_HANDLE_VALUE) {
+		return;
+	}
+
+	char *buffer;
+	LARGE_INTEGER file_size;
+	if (!GetFileSizeEx(config_file, &file_size)) {
+		CloseHandle(config_file);
+		return;
+	}
+	buffer = static_cast<char *>(malloc(file_size.QuadPart));
+
+	DWORD bytes_read;
+	if (!ReadFile(config_file, buffer, file_size.QuadPart, &bytes_read, NULL)) {
+		CloseHandle(config_file);
+		free(buffer);
+		return;
+	}
+	CloseHandle(config_file);
+
+	char *strtok_context;
+	char *line = strtok_s(buffer, "\r\n", &strtok_context);
+	while (line) {
+		char *guifont = strstr(line, "set guifont=");
+		if (guifont) {
+			// Check if we're inside a comment
+			int leading_count = guifont - line;
+			bool inside_comment = false;
+			for (int i = 0; i < leading_count; ++i) {
+				if (line[i] == '"') {
+					inside_comment = !inside_comment;
+				}
+			}
+			if (!inside_comment) {
+				guifont_out->clear();
+
+				int line_offset = (guifont - line + strlen("set guifont="));
+				int guifont_strlen = strlen(line) - line_offset;
+				int escapes = 0;
+				for (int i = 0; i < guifont_strlen; ++i) {
+					if (line[line_offset + i] == '\\' && i < (guifont_strlen - 1) && line[line_offset + i + 1] == ' ') {
+						guifont_out->push_back(' ');
+						++i;
+						continue;
+					}
+					guifont_out->push_back(line[i + line_offset]);
+
+				}
+				guifont_out->push_back('\0');
+			}
+		}
+		line = strtok_s(NULL, "\r\n", &strtok_context);
+	}
+
+	free(buffer);
 }
 
 void NvimSendCommand(Nvim *nvim, const char *command) {
