@@ -503,32 +503,34 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 
-	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
-	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
-	UINT window_flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED;
-	int window_w = 0, window_h = 0;
-
-	if (start_rows != 0 && start_cols != 0) {
-		PixelSize start_size = RendererGridToPixelSize(context.renderer,
-			start_rows, start_cols);
-		window_w = start_size.width;
-		window_h = start_size.height;
-		window_flags = window_flags & ~SWP_NOSIZE;
-	}
-	if (start_pos_x != CW_USEDEFAULT || start_pos_y != CW_USEDEFAULT) {
-		window_flags = window_flags & ~SWP_NOMOVE;
-	}
-	SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, window_flags);
-
-	if (start_fullscreen) {
-		ToggleFullscreen(context.hwnd, &context);
-	}
-
 	// Attach the renderer now that the window size is determined
 	RendererAttach(context.renderer);
     auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
                                                  context.renderer->pixel_size.width, context.renderer->pixel_size.height);
 	NvimSendUIAttach(context.nvim, rows, cols);
+
+	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
+	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
+	int window_w = 0, window_h = 0;
+	if (start_rows != 0 && start_cols != 0) {
+		PixelSize start_size = RendererGridToPixelSize(context.renderer, start_rows, start_cols);
+		window_w = start_size.width;
+		window_h = start_size.height;
+	}
+	else {
+		window_w = context.renderer->pixel_size.width;
+		window_h = context.renderer->pixel_size.height;
+	}
+
+	start_pos_x = start_pos_x != CW_USEDEFAULT ? start_pos_x : (GetSystemMetrics(SM_CXSCREEN) - window_w) / 2;
+    start_pos_y = start_pos_y != CW_USEDEFAULT ? start_pos_y : (GetSystemMetrics(SM_CYSCREEN) - window_h) / 2;
+
+	if (start_fullscreen) {
+		ToggleFullscreen(context.hwnd, &context);
+	}
+	else {
+		SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, SWP_SHOWWINDOW);
+	}
 
 	MSG msg;
 	uint32_t previous_width = 0, previous_height = 0;
