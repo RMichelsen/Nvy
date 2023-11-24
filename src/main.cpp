@@ -4,7 +4,7 @@
 struct Context {
 	bool start_maximized;
 	bool start_fullscreen;
-    bool disable_fullscreen;
+	bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -64,7 +64,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 					free(command);
 				}
 			}
-        } break;
+		} break;
 		case NvimRequest::vim_get_api_info:
 		case NvimRequest::nvim_input:
 		case NvimRequest::nvim_input_mouse:
@@ -82,7 +82,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			// nvim has read user init file, we can now request info if we want
 			// like additional startup settings or something else
 			NvimSendResponse(context->nvim, result.request.msg_id);
-            NvimQueryConfig(context->nvim);
+			NvimQueryConfig(context->nvim);
 		}
 	} break;
 	}
@@ -195,8 +195,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
 			if(context->dead_char_pending) {
 				if(static_cast<int>(wparam) == VK_SPACE ||
-				   static_cast<int>(wparam) == VK_BACK  ||
-				   static_cast<int>(wparam) == VK_ESCAPE) {
+					static_cast<int>(wparam) == VK_BACK ||
+					static_cast<int>(wparam) == VK_ESCAPE) {
 					context->dead_char_pending = false;
 					TranslateMessage(&current_msg);
 					return 0;
@@ -343,7 +343,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			// Not the most elegant solution, but must wait for mouseclick to be registered with nvim
 			Sleep(10);
 
-      NvimOpenFile(context->nvim, file_to_open, (GetKeyState(VK_CONTROL) & 0x80) != 0);
+		NvimOpenFile(context->nvim, file_to_open, (GetKeyState(VK_CONTROL) & 0x80) != 0);
 		}
 	} return 0;
 	case WM_SETFOCUS: {
@@ -382,7 +382,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
-    bool disable_fullscreen = false;
+	bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
 	int64_t start_rows = 0;
 	int64_t start_cols = 0;
@@ -457,7 +457,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	Context context {
 		.start_maximized = start_maximized,
 		.start_fullscreen = start_fullscreen,
-        .disable_fullscreen = disable_fullscreen,
+		.disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
 		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
@@ -503,32 +503,34 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
 
+	// Attach the renderer now that the window size is determined
+	RendererAttach(context.renderer);
+	auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
+													context.renderer->pixel_size.width, context.renderer->pixel_size.height);
+	NvimSendUIAttach(context.nvim, rows, cols);
+
 	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
 	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
-	UINT window_flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED;
 	int window_w = 0, window_h = 0;
-
 	if (start_rows != 0 && start_cols != 0) {
-		PixelSize start_size = RendererGridToPixelSize(context.renderer,
-			start_rows, start_cols);
+		PixelSize start_size = RendererGridToPixelSize(context.renderer, start_rows, start_cols);
 		window_w = start_size.width;
 		window_h = start_size.height;
-		window_flags = window_flags & ~SWP_NOSIZE;
 	}
-	if (start_pos_x != CW_USEDEFAULT || start_pos_y != CW_USEDEFAULT) {
-		window_flags = window_flags & ~SWP_NOMOVE;
+	else {
+		window_w = context.renderer->pixel_size.width;
+		window_h = context.renderer->pixel_size.height;
 	}
-	SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, window_flags);
+
+	start_pos_x = start_pos_x != CW_USEDEFAULT ? start_pos_x : (GetSystemMetrics(SM_CXSCREEN) - window_w) / 2;
+	start_pos_y = start_pos_y != CW_USEDEFAULT ? start_pos_y : (GetSystemMetrics(SM_CYSCREEN) - window_h) / 2;
 
 	if (start_fullscreen) {
 		ToggleFullscreen(context.hwnd, &context);
 	}
-
-	// Attach the renderer now that the window size is determined
-	RendererAttach(context.renderer);
-    auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
-                                                 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
-	NvimSendUIAttach(context.nvim, rows, cols);
+	else {
+		SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, SWP_SHOWWINDOW);
+	}
 
 	MSG msg;
 	uint32_t previous_width = 0, previous_height = 0;
