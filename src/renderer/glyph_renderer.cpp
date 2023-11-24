@@ -155,14 +155,9 @@ HRESULT GlyphRenderer::DrawInlineObject(void *client_drawing_context, float orig
 	return E_NOTIMPL;
 }
 
-HRESULT GlyphRenderer::DrawStrikethrough(void *client_drawing_context, float baseline_origin_x, 
-	float baseline_origin_y, DWRITE_STRIKETHROUGH const *strikethrough, IUnknown *client_drawing_effect) noexcept {
-	return E_NOTIMPL;
-}
-
-HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baseline_origin_x, 
-	float baseline_origin_y, DWRITE_UNDERLINE const *underline, IUnknown *client_drawing_effect) noexcept {
-
+HRESULT GlyphRenderer::DrawLine(void *client_drawing_context, float baseline_origin_x, float baseline_origin_y,
+	FLOAT offset, FLOAT width, FLOAT thickness, IUnknown *client_drawing_effect, bool use_special_color) noexcept {
+	
 	HRESULT hr = S_OK;
 	Renderer *renderer = reinterpret_cast<Renderer *>(client_drawing_context);
 
@@ -170,22 +165,38 @@ HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baselin
 	{
 		GlyphDrawingEffect *drawing_effect;
 		client_drawing_effect->QueryInterface(__uuidof(GlyphDrawingEffect), reinterpret_cast<void **>(&drawing_effect));
-		temp_brush->SetColor(D2D1::ColorF(drawing_effect->special_color));
+		uint32_t line_color = use_special_color ? drawing_effect->special_color : drawing_effect->text_color;
+		temp_brush->SetColor(D2D1::ColorF(line_color));
 		SafeRelease(&drawing_effect);
 	}
 	else {
-		temp_brush->SetColor(D2D1::ColorF(renderer->hl_attribs[0].special));
-	}
+		uint32_t line_color = use_special_color ? renderer->hl_attribs[0].special : renderer->hl_attribs[0].foreground;
+		temp_brush->SetColor(D2D1::ColorF(line_color));
+	} 
 
 	D2D1_RECT_F rect = D2D1_RECT_F {
 		.left = baseline_origin_x,
-		.top = baseline_origin_y + underline->offset,
-		.right = baseline_origin_x + underline->width,
-		.bottom = baseline_origin_y + underline->offset + max(underline->thickness, 1.0f)
+		.top = baseline_origin_y + offset,
+		.right = baseline_origin_x + width,
+		.bottom = baseline_origin_y + offset + max(thickness, 1.0f)
 	};
 
     renderer->d2d_context->FillRectangle(rect, temp_brush);
 	return hr;
+}
+
+HRESULT GlyphRenderer::DrawStrikethrough(void *client_drawing_context, float baseline_origin_x, 
+	float baseline_origin_y, DWRITE_STRIKETHROUGH const *strikethrough, IUnknown *client_drawing_effect) noexcept {
+
+	return DrawLine(client_drawing_context, baseline_origin_x, baseline_origin_y,
+		strikethrough->offset, strikethrough->width, strikethrough->thickness, client_drawing_effect, false);
+}
+
+HRESULT GlyphRenderer::DrawUnderline(void *client_drawing_context, float baseline_origin_x, 
+	float baseline_origin_y, DWRITE_UNDERLINE const *underline, IUnknown *client_drawing_effect) noexcept {
+
+	return DrawLine(client_drawing_context, baseline_origin_x, baseline_origin_y,
+		underline->offset, underline->width, underline->thickness, client_drawing_effect, true);
 }
 
 HRESULT GlyphRenderer::IsPixelSnappingDisabled(void *client_drawing_context, BOOL *is_disabled) noexcept {

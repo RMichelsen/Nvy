@@ -5,20 +5,21 @@
 #include <optional>
 
 struct Context {
-	int start_x, start_y;
-	GridSize start_grid_size;
 	bool start_maximized;
 	bool start_fullscreen;
+    bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
 	bool dead_char_pending;
 	bool xbuttons[2];
+	float buffered_scroll_amount;
 	GridPoint cached_cursor_grid_pos;
 	WINDOWPLACEMENT saved_window_placement;
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
+	HKL hkl;
 };
 
 void ToggleFullscreen(HWND hwnd, Context *context) {
@@ -46,19 +47,13 @@ void ToggleFullscreen(HWND hwnd, Context *context) {
 void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	MPackMessageResult result = MPackExtractMessageResult(tree);
 
-	if (result.type == MPackMessageType::Response) {
+	switch (result.type) {
+	case MPackMessageType::Response: {
 		assert(result.response.msg_id <= context->nvim->next_msg_id);
 		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
-		case NvimRequest::vim_get_api_info: {
-			mpack_node_t top_level_map = mpack_node_array_at(result.params, 1);
-			mpack_node_t version_map = mpack_node_map_value_at(top_level_map, 0);
-			int64_t api_level = mpack_node_map_cstr(version_map, "api_level").data->value.i;
-			assert(api_level > 6);
-		} break;
 		case NvimRequest::nvim_eval: {
 			Vec<char> guifont_buffer;
 			NvimParseConfig(context->nvim, result.params, &guifont_buffer);
-
 			if (!guifont_buffer.empty()) {
 				bool updated = RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
 				if(!updated) {
@@ -72,45 +67,27 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 					free(command);
 				}
 			}
-
-			if (context->start_grid_size.rows != 0 &&
-				context->start_grid_size.cols != 0) {
-				PixelSize start_size = RendererGridToPixelSize(context->renderer,
-					context->start_grid_size.rows, context->start_grid_size.cols);
-				RECT client_rect;
-				GetClientRect(context->hwnd, &client_rect);
-				MoveWindow(context->hwnd, client_rect.left, client_rect.top,
-					start_size.width, start_size.height, false);
-			}
-
-			// Attach the renderer now that the window size is determined
-			RendererAttach(context->renderer);
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
-				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			NvimSendUIAttach(context->nvim, rows, cols);
-
-			if (context->start_x != CW_USEDEFAULT ||
-				context->start_y != CW_USEDEFAULT) {
-				SetWindowPos(context->hwnd, NULL,
-					context->start_x, context->start_y,
-					0, 0,
-					SWP_NOSIZE | SWP_NOREDRAW | SWP_NOACTIVATE |
-					SWP_NOOWNERZORDER | SWP_NOZORDER);
-			}
-			if (context->start_fullscreen) {
-				ToggleFullscreen(context->hwnd, context);
-			}
-		} break;
-        case NvimRequest::nvim_input:
-        case NvimRequest::nvim_input_mouse:
-        case NvimRequest::nvim_command: {
         } break;
+		case NvimRequest::vim_get_api_info:
+		case NvimRequest::nvim_input:
+		case NvimRequest::nvim_input_mouse:
+		case NvimRequest::nvim_command: {
+		} break;
 		}
-	}
-	else if (result.type == MPackMessageType::Notification) {
+	} break;
+	case MPackMessageType::Notification: {
 		if (MPackMatchString(result.notification.name, "redraw")) {
 			RendererRedraw(context->renderer, result.params, context->start_maximized);
 		}
+	} break;
+	case MPackMessageType::Request: {
+		if (MPackMatchString(result.request.method, "vimenter")) {
+			// nvim has read user init file, we can now request info if we want
+			// like additional startup settings or something else
+			NvimSendResponse(context->nvim, result.request.msg_id);
+            NvimQueryConfig(context->nvim);
+		}
+	} break;
 	}
 }
 
@@ -167,6 +144,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			context->renderer->pixel_size.width, context->renderer->pixel_size.height);
 		SendResizeIfNecessary(context, rows, cols);
 	} return 0;
+	case WM_INPUTLANGCHANGE: {
+		HKL hkl = (HKL)lparam;
+		context->hkl = hkl;
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	}
 	case WM_DEADCHAR:
 	case WM_SYSDEADCHAR: {
 		context->dead_char_pending = true;
@@ -196,7 +178,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		// Special case for <ALT+ENTER> (fullscreen transition)
-		if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
+		if (!context->disable_fullscreen && ((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_RETURN) {
 			ToggleFullscreen(hwnd, context);
 		}
 		else if (((GetKeyState(VK_LMENU) & 0x80) != 0) && wparam == VK_F4) {
@@ -224,17 +206,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 				}
 			}
 
-			// Special case for forward slash and semicolon. 
-			// Unfortunately their virtual key codes are not unique and can vary between languages, so this only works for US keyboard layouts.
-			// See: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-			bool shift_down = (GetKeyState(VK_SHIFT) & 0x80) != 0;
-			if(wparam == 0xBF && !shift_down) {
-				NvimSendSysChar(context->nvim, L'/');
+			bool altgr_down = (GetKeyState(VK_RMENU) & 0x80) != 0;
+			bool ctrl_down = (GetKeyState(VK_CONTROL) & 0x80) != 0;
+			wchar_t wchar = static_cast<wchar_t>(MapVirtualKeyEx(wparam, MAPVK_VK_TO_CHAR, context->hkl));
+			if (!altgr_down && ctrl_down && wchar) {
+				NvimSendSysChar(context->nvim, wchar);
+				return 0;
 			}
-			if(wparam == 0xBA && !shift_down) {
-				NvimSendSysChar(context->nvim, L';');
-			}
-
 
 			// If none of the special keys were hit, process in WM_CHAR
 			if(!NvimProcessKeyDown(context->nvim, static_cast<int>(wparam))) {
@@ -318,19 +296,33 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		ScreenToClient(hwnd, &client_point);
 
 		float scroll_amount = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
-		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
-		MouseAction action = scroll_amount > 0 ? MouseAction::MouseWheelUp : MouseAction::MouseWheelDown;
+		context->buffered_scroll_amount += scroll_amount;
 
-		if (should_resize_font) {
-			RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
-			auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
-				context->renderer->pixel_size.width, context->renderer->pixel_size.height);
-			SendResizeIfNecessary(context, rows, cols);
+		auto [row, col] = RendererCursorToGridPoint(context->renderer, client_point.x, client_point.y);
+
+		MouseAction action;
+		if (context->buffered_scroll_amount > 0.0) {
+			scroll_amount = 1.0f;
+			action = MouseAction::MouseWheelUp;
+		} else {
+			scroll_amount = -1.0f;
+			action = MouseAction::MouseWheelDown;
 		}
-		else {
-			for (int i = 0; i < abs(scroll_amount); ++i) {
-				NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, row, col);
+
+		while (abs(context->buffered_scroll_amount) >= 1.0f) {
+			if (should_resize_font) {
+				RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size + (scroll_amount * 2.0f));
+				auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
+					context->renderer->pixel_size.width, context->renderer->pixel_size.height);
+				SendResizeIfNecessary(context, rows, cols);
 			}
+			else {
+				for (int i = 0; i < abs(scroll_amount); ++i) {
+					NvimSendMouseInput(context->nvim, MouseButton::Wheel, action, row, col);
+				}
+			}
+
+			context->buffered_scroll_amount -= scroll_amount;
 		}
 	} return 0;
 	case WM_DROPFILES: {
@@ -462,26 +454,27 @@ void AutoSetCppEnv()
 	_putenv_s("path", envpath.c_str());
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
+int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _In_ LPWSTR p_cmd_line, _In_ int n_cmd_show) {
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+	AutoSetCppEnv();
 
 	int n_args;
 	LPWSTR *cmd_line_args = CommandLineToArgvW(GetCommandLineW(), &n_args);
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
+    bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
-	int64_t rows = 0;
-	int64_t cols = 0;
-	int64_t x = CW_USEDEFAULT;
-	int64_t y = CW_USEDEFAULT;
+	int64_t start_rows = 0;
+	int64_t start_cols = 0;
+	int64_t start_pos_x = CW_USEDEFAULT;
+	int64_t start_pos_y = CW_USEDEFAULT;
 
-	constexpr int MAX_NVIM_CMD_LINE_SIZE = 32767;
-	wchar_t nvim_command_line[MAX_NVIM_CMD_LINE_SIZE] = {};
-	wcscpy_s(nvim_command_line, MAX_NVIM_CMD_LINE_SIZE, L"nvim --embed");
-	int cmd_line_size_left = MAX_NVIM_CMD_LINE_SIZE - wcslen(L"nvim --embed");
-
-	AutoSetCppEnv();
+	struct WArg {
+		wchar_t *arg;
+		size_t len;
+	};
+	Vec<WArg> nvim_args;
 
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
@@ -494,15 +487,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		else if(!wcscmp(cmd_line_args[i], L"--disable-ligatures")) {
 			disable_ligatures = true;
 		}
+		else if(!wcscmp(cmd_line_args[i], L"--disable-fullscreen")) {
+			disable_fullscreen = true;
+		}
 		else if(!wcsncmp(cmd_line_args[i], L"--geometry=", wcslen(L"--geometry="))) {
 			wchar_t *end_ptr;
-			cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
-			rows = wcstol(end_ptr + 1, nullptr, 10);
+			start_cols = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
+			start_rows = wcstol(end_ptr + 1, nullptr, 10);
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--position=", wcslen(L"--position="))) {
 			wchar_t *end_ptr;
-			x = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
-			y = wcstol(end_ptr + 1, nullptr, 10);
+			start_pos_x = wcstol(&cmd_line_args[i][11], &end_ptr, 10);
+			start_pos_y = wcstol(end_ptr + 1, nullptr, 10);
 		}
 		else if(!wcsncmp(cmd_line_args[i], L"--linespace-factor=", wcslen(L"--linespace-factor="))) {
 			wchar_t *end_ptr;
@@ -522,15 +518,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		}
 		// Otherwise assume the argument is a filename to open
 		else {
-			size_t arg_size = wcslen(cmd_line_args[i]);
-			if(arg_size <= (cmd_line_size_left + 3)) {
-				wcscat_s(nvim_command_line, cmd_line_size_left, L" \"");
-				cmd_line_size_left -= 2;
-				wcscat_s(nvim_command_line, cmd_line_size_left, cmd_line_args[i]);
-				cmd_line_size_left -= arg_size;
-				wcscat_s(nvim_command_line, cmd_line_size_left, L"\"");
-				cmd_line_size_left -= 1;
-			}
+			nvim_args.push_back(WArg{
+				.arg = cmd_line_args[i],
+				.len = wcslen(cmd_line_args[i])
+			});
 		}
 	}
 
@@ -541,10 +532,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		.style = CS_HREDRAW | CS_VREDRAW,
 		.lpfnWndProc = WndProc,
 		.hInstance = instance,
-        .hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
+		.hIcon = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0)),
 		.hCursor = LoadCursor(NULL, IDC_ARROW),
 		.lpszClassName = window_class_name,
-        .hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
+		.hIconSm = static_cast<HICON>(LoadImage(GetModuleHandle(NULL), L"NVIM_ICON", IMAGE_ICON, LR_DEFAULTSIZE, LR_DEFAULTSIZE, 0))
 	};
 
 	if (!RegisterClassEx(&window_class)) {
@@ -554,15 +545,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	Nvim nvim {};
 	Renderer renderer {};
 	Context context {
-		.start_x = static_cast<int>(x),
-		.start_y = static_cast<int>(y),
-		.start_grid_size {
-			.rows = static_cast<int>(rows),
-			.cols = static_cast<int>(cols)
-		},
 		.start_maximized = start_maximized,
 		.start_fullscreen = start_fullscreen,
-
+        .disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
 		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
@@ -584,6 +569,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	);
 	if (hwnd == NULL) return 1;
 	context.hwnd = hwnd;
+	context.hkl = GetKeyboardLayout(0);
 	RECT window_rect;
 	DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &window_rect, sizeof(RECT));
 	HMONITOR monitor = MonitorFromPoint({window_rect.left, window_rect.top}, MONITOR_DEFAULTTONEAREST);
@@ -592,10 +578,49 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	BOOL should_use_dark_mode = ShouldUseDarkMode();
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &should_use_dark_mode, sizeof(BOOL));
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
+
+	// Prepare nvim command line
+	size_t nvim_command_len = wcslen(L"nvim --embed");
+	for (const auto& nvim_command_arg : nvim_args) {
+		nvim_command_len += wcslen(L" \"\"") + nvim_command_arg.len;
+	}
+	wchar_t *nvim_command_line = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (nvim_command_len + 1)));
+	int cur_len = _snwprintf_s(nvim_command_line, nvim_command_len + 1, nvim_command_len, L"nvim --embed");
+	for (const auto& [arg, len] : nvim_args) {
+		cur_len += _snwprintf_s(nvim_command_line + cur_len, nvim_command_len + 1 - cur_len, nvim_command_len - cur_len,
+			L" \"%s\"", arg, static_cast<uint32_t>(len)); 
+	}
+
 	NvimInitialize(&nvim, nvim_command_line, hwnd);
+
+	// Attach the renderer now that the window size is determined
+	RendererAttach(context.renderer);
+    auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
+                                                 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
+	NvimSendUIAttach(context.nvim, rows, cols);
+
 	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
 	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
-	SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+	int window_w = 0, window_h = 0;
+	if (start_rows != 0 && start_cols != 0) {
+		PixelSize start_size = RendererGridToPixelSize(context.renderer, start_rows, start_cols);
+		window_w = start_size.width;
+		window_h = start_size.height;
+	}
+	else {
+		window_w = context.renderer->pixel_size.width;
+		window_h = context.renderer->pixel_size.height;
+	}
+
+	start_pos_x = start_pos_x != CW_USEDEFAULT ? start_pos_x : (GetSystemMetrics(SM_CXSCREEN) - window_w) / 2;
+    start_pos_y = start_pos_y != CW_USEDEFAULT ? start_pos_y : (GetSystemMetrics(SM_CYSCREEN) - window_h) / 2;
+
+	if (start_fullscreen) {
+		ToggleFullscreen(context.hwnd, &context);
+	}
+	else {
+		SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, SWP_SHOWWINDOW);
+	}
 
 	MSG msg;
 	uint32_t previous_width = 0, previous_height = 0;
@@ -618,6 +643,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
+	free(nvim_command_line);
 
 	return nvim.exit_code;
 }

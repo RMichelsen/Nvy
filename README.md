@@ -22,13 +22,15 @@ Nvy can be started with the following flags:
 - `--position=<x>,<y>` to start with a given position, e.g. `--position=500,200`
 - `--geometry=<cols>x<rows>` to start with a given number of rows and columns, e.g. `--geometry=80x25`
 - `--disable-ligatures` to disable font ligatures
+- `--disable-fullscreen` to disable toggling fullscreen with Alt+Enter
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
 
 ## Extra Features
 
 - You can use Alt+Enter to toggle fullscreen
 - You can use Ctrl+Mousewheel to zoom
-- You can drag files onto Nvy to open them
+- You can drag files onto Nvy to open them (:e)
+- Dragging files while holding Ctrl opens them in a new window (:new)
 
 ## Releases
 
