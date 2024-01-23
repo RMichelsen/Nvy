@@ -118,16 +118,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		RECT* const prcNewWindow = (RECT*)lparam;
 
 		context->renderer->dpi_scale = current_dpi / 96.0f;
-		RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
-		auto [rows, cols] = RendererPixelsToGridSize(context->renderer,
-				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top);
-		SendResizeIfNecessary(context, rows, cols);
+		context->saved_window_width = prcNewWindow->right - prcNewWindow->left;
+		context->saved_window_height = prcNewWindow->bottom - prcNewWindow->top;
 		context->saved_dpi_scaling = current_dpi;
+		RendererUpdateFont(context->renderer, context->renderer->last_requested_font_size);
 
 		SetWindowPos(hwnd, NULL,
-				0, 0,
+				prcNewWindow->left, prcNewWindow->top,
 				prcNewWindow->right - prcNewWindow->left, prcNewWindow->bottom - prcNewWindow->top,
-				SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+				SWP_NOZORDER | SWP_NOACTIVATE);
+
+		RendererResize(context->renderer, context->saved_window_width, context->saved_window_height);
+		auto [rows, cols] = RendererPixelsToGridSize(context->renderer, context->saved_window_width, context->saved_window_height);
+		SendResizeIfNecessary(context, rows, cols);
 	} return 0;
 	case WM_DESTROY: {
 		PostQuitMessage(0);
