@@ -24,6 +24,7 @@ Nvy can be started with the following flags:
 - `--disable-ligatures` to disable font ligatures
 - `--disable-fullscreen` to disable toggling fullscreen with Alt+Enter
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
+- `--neovim-bin=<path>` to provide path to nvim.exe, e.g. `--neovim-bin="C:\neovim\nvim-win64\bin\nvim.exe"`
 
 ## Extra Features
 

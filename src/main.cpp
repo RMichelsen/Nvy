@@ -4,7 +4,7 @@
 struct Context {
 	bool start_maximized;
 	bool start_fullscreen;
-    bool disable_fullscreen;
+	bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -382,12 +382,15 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
-    bool disable_fullscreen = false;
+	bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
 	int64_t start_rows = 0;
 	int64_t start_cols = 0;
 	int64_t start_pos_x = CW_USEDEFAULT;
 	int64_t start_pos_y = CW_USEDEFAULT;
+
+	wchar_t *nvim_bin = nullptr;
+	size_t nvim_bin_len{};
 
 	struct WArg {
 		wchar_t *arg;
@@ -425,6 +428,10 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 			if(factor > 0.0f && factor < 20.0f) {
 				linespace_factor = factor;
 			}
+		}
+		else if(!wcsncmp(cmd_line_args[i], L"--neovim-bin=", wcslen(L"--neovim-bin="))) {
+			nvim_bin = &cmd_line_args[i][13];
+			nvim_bin_len = wcslen(&cmd_line_args[i][13]);
 		}
 		// Otherwise assume the argument is a filename to open
 		else {
@@ -490,14 +497,28 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	RendererInitialize(&renderer, hwnd, disable_ligatures, linespace_factor, context.saved_dpi_scaling);
 
 	// Prepare nvim command line
-	size_t nvim_command_len = wcslen(L"nvim --embed");
-	for (const auto& nvim_command_arg : nvim_args) {
-		nvim_command_len += wcslen(L" \"\"") + nvim_command_arg.len;
+	wchar_t *nvim_exe_cmd = nullptr;
+	size_t nvim_exe_cmd_len{};
+
+	if (nvim_bin_len) { 
+		wcscat_s(nvim_bin, nvim_bin_len + wcslen(L" --embed") + 1, L" --embed");
+		nvim_exe_cmd = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (nvim_bin_len + wcslen(L" --embed") + 1)));
+		wcscpy_s(nvim_exe_cmd, nvim_bin_len + wcslen(L" --embed") + 1, nvim_bin);
+		nvim_exe_cmd_len = wcslen(nvim_exe_cmd);
 	}
-	wchar_t *nvim_command_line = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (nvim_command_len + 1)));
-	int cur_len = _snwprintf_s(nvim_command_line, nvim_command_len + 1, nvim_command_len, L"nvim --embed");
+	else {
+		nvim_exe_cmd = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (wcslen(L"nvim --embed") + 1)));
+		wcscpy_s(nvim_exe_cmd, wcslen(L"nvim --embed") + 1, L"nvim --embed");
+		nvim_exe_cmd_len = wcslen(nvim_exe_cmd);
+	}
+
+	for (const auto& nvim_command_arg : nvim_args) {
+		nvim_exe_cmd_len += wcslen(L" \"\"") + nvim_command_arg.len;
+	}
+	wchar_t *nvim_command_line = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (nvim_exe_cmd_len + 1)));
+	int cur_len = _snwprintf_s(nvim_command_line, nvim_exe_cmd_len + 1, nvim_exe_cmd_len, nvim_exe_cmd);
 	for (const auto& [arg, len] : nvim_args) {
-		cur_len += _snwprintf_s(nvim_command_line + cur_len, nvim_command_len + 1 - cur_len, nvim_command_len - cur_len,
+		cur_len += _snwprintf_s(nvim_command_line + cur_len, nvim_exe_cmd_len + 1 - cur_len, nvim_exe_cmd_len - cur_len,
 			L" \"%s\"", arg, static_cast<uint32_t>(len)); 
 	}
 
@@ -526,8 +547,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	// Attach the renderer now that the window size is determined
 	RendererAttach(context.renderer);
-    auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
-                                                 context.renderer->pixel_size.width, context.renderer->pixel_size.height);
+	auto [rows, cols] = RendererPixelsToGridSize(context.renderer,
+		context.renderer->pixel_size.width, context.renderer->pixel_size.height);
 	NvimSendUIAttach(context.nvim, rows, cols);
 
 	MSG msg;
@@ -551,6 +572,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	NvimShutdown(&nvim);
 	UnregisterClass(window_class_name, instance);
 	DestroyWindow(hwnd);
+	free(nvim_exe_cmd);
 	free(nvim_command_line);
 
 	return nvim.exit_code;
