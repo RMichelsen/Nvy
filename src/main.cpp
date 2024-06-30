@@ -88,12 +88,14 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	}
 }
 
-void SendResizeIfNecessary(Context *context, int rows, int cols) {
-	if (!context->renderer->grid_initialized) return;
+bool SendResizeIfNecessary(Context *context, int rows, int cols) {
+	if (!context->renderer->grid_initialized) return false;
 
 	if (rows != context->renderer->grid_rows || cols != context->renderer->grid_cols) {
 		NvimSendResize(context->nvim, rows, cols);
+		return true;
 	}
+	return false;
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -543,7 +545,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 			previous_height = context.saved_window_height;
 			auto [rows, cols] = RendererPixelsToGridSize(context.renderer, context.saved_window_width, context.saved_window_height);
 			RendererResize(context.renderer, context.saved_window_width, context.saved_window_height);
-			SendResizeIfNecessary(&context, rows, cols);
+			if (!SendResizeIfNecessary(&context, rows, cols))
+				RendererFlush(context.renderer);
 		}
 	}
 

@@ -125,6 +125,7 @@ void RendererResize(Renderer *renderer, uint32_t width, uint32_t height);
 bool RendererUpdateGuiFont(Renderer *renderer, const char *guifont, size_t strlen);
 bool RendererUpdateFont(Renderer *renderer, float font_size, const char *font_string = "", int strlen = 0);
 void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximized);
+void RendererFlush(Renderer* renderer);
 
 PixelSize RendererGridToPixelSize(Renderer *renderer, int rows, int cols);
 GridSize RendererPixelsToGridSize(Renderer *renderer, int width, int height);
