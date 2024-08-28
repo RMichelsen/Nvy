@@ -1,0 +1,110 @@
+# version 1.0 2021-01-10
+# via https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+
+BasedOnStyle: Microsoft
+Language: Cpp
+
+AllowShortLambdasOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: true
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+IndentPPDirectives: BeforeHash
+Standard: Cpp11
+ColumnLimit: 160
+SpacesBeforeTrailingComments: 2
+BreakConstructorInitializers: BeforeComma
+Cpp11BracedListStyle: false
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterClass: true
+    AfterControlStatement: true
+    AfterEnum: true
+    AfterFunction: true
+    AfterNamespace: true
+    AfterObjCDeclaration: false
+    AfterStruct: true
+    AfterUnion: true
+    BeforeCatch: true
+    BeforeElse: true
+    IndentBraces: false
+
+NamespaceIndentation: All
+
+
+# --------------
+# version 0.1 2021-01-09
+#BasedOnStyle: WebKit
+#Standard: Cpp11
+#ColumnLimit: 160
+#PenaltyExcessCharacter: 4
+#CommentPragmas: "^!|^:"
+#CompactNamespaces: true
+#FixNamespaceComments: true
+#PointerBindsToType: false
+#BreakBeforeBinaryOperators: NonAssignment
+#BreakConstructorInitializers: BeforeComma
+#BreakBeforeBraces: Custom
+#BraceWrapping:
+#    AfterClass: true
+#    AfterControlStatement: true
+#    AfterEnum: true
+#    AfterFunction: true
+#    AfterNamespace: true
+#    AfterObjCDeclaration: false
+#    AfterStruct: true
+#    AfterUnion: true
+#    BeforeCatch: true
+#    BeforeElse: true
+#    IndentBraces: false
+#Cpp11BracedListStyle: false
+#
+#PointerAlignment: Right
+#DerivePointerAlignment: false
+#
+##SpaceAfterCStyleCast: true
+##SpaceAfterTemplateKeyword: true
+##SpaceBeforeAssignmentOperators: true
+##SpaceInEmptyParentheses: false
+#SpacesBeforeTrailingComments: 2
+##SpacesInAngles: false
+##SpacesInCStyleCastParentheses: true
+##SpacesInContainerLiterals: true
+##SpaceBeforeParens: false
+##SpacesInParentheses: false
+##SpacesInSquareBrackets: true
+#
+#ConstructorInitializerAllOnOneLineOrOnePerLine: true
+#ConstructorInitializerIndentWidth: 4
+#ContinuationIndentWidth: 8
+#NamespaceIndentation: None
+#IndentPPDirectives: AfterHash
+#IndentCaseLabels: false
+#IndentWidth: 4
+#
+#KeepEmptyLinesAtTheStartOfBlocks: false 
+#MaxEmptyLinesToKeep: 2
+#
+#AlignAfterOpenBracket: true
+#AlignConsecutiveAssignments: false
+#AlignEscapedNewlinesLeft: true
+#AlignOperands: false
+#AlignTrailingComments: true
+#
+#
+#AlwaysBreakTemplateDeclarations: true
+#AlwaysBreakAfterReturnType: None
+#AlwaysBreakBeforeMultilineStrings: true
+#AlwaysBreakTemplateDeclarations: true
+#
+#AllowShortFunctionsOnASingleLine: Inline
+#AllowShortCaseLabelsOnASingleLine: true
+#AllowShortBlocksOnASingleLine: true
+#AllowShortIfStatementsOnASingleLine: false
+#AllowShortLoopsOnASingleLine: false
+#
+#SortIncludes: true
+#SortUsingDeclarations: true
+#
+#UseTab: false
