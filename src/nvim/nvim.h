@@ -49,7 +49,7 @@ struct Nvim
     DWORD exit_code;
 };
 
-void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
+bool NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
 void NvimQueryConfig(Nvim *nvim);

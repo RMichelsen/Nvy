@@ -1,3 +1,4 @@
+#include "common/scoped_exit.hpp"
 #include "nvim/nvim.h"
 #include "renderer/renderer.h"
 #include <filesystem>
@@ -682,7 +683,20 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
             _snwprintf_s(nvim_command_line + cur_len, nvim_command_len + 1 - cur_len, nvim_command_len - cur_len, L" \"%s\"", arg, static_cast<uint32_t>(len));
     }
 
-    NvimInitialize(&nvim, nvim_command_line, hwnd);
+    auto scope = scoped_exit([&] {
+        RendererShutdown(&renderer);
+        NvimShutdown(&nvim);
+        UnregisterClass(window_class_name, instance);
+        DestroyWindow(hwnd);
+        free(nvim_command_line);
+    });
+
+    auto nvim_process_ok = NvimInitialize(&nvim, nvim_command_line, hwnd);
+    if (!nvim_process_ok)
+    {
+        MessageBox(hwnd, L"Cannot run nvim process", L"Error", 0);
+        return EXIT_FAILURE;
+    }
 
     // Attach the renderer now that the window size is determined
     RendererAttach(context.renderer);
@@ -720,7 +734,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
     uint32_t previous_width = 0, previous_height = 0;
     while (GetMessage(&msg, 0, 0, 0))
     {
-        // TranslateMessage(&msg);
+        //TranslateMessage(&msg);
         DispatchMessage(&msg);
 
         if (renderer.draw_active) continue;
@@ -734,12 +748,6 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
             SendResizeIfNecessary(&context, rows, cols);
         }
     }
-
-    RendererShutdown(&renderer);
-    NvimShutdown(&nvim);
-    UnregisterClass(window_class_name, instance);
-    DestroyWindow(hwnd);
-    free(nvim_command_line);
 
     return nvim.exit_code;
 }

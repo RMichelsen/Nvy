@@ -74,7 +74,7 @@ DWORD WINAPI NvimProcessMonitor(LPVOID param)
     return 0;
 }
 
-void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
+bool NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
 {
     nvim->hwnd = hwnd;
 
@@ -94,7 +94,11 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
         .hStdError = nvim->stdout_write };
 
     // wchar_t command_line[] = L"nvim --embed";
-    CreateProcessW(nullptr, command_line, nullptr, nullptr, true, CREATE_NO_WINDOW, nullptr, nullptr, &startup_info, &nvim->process_info);
+    auto ok = CreateProcessW(nullptr, command_line, nullptr, nullptr, true, CREATE_NO_WINDOW, nullptr, nullptr, &startup_info, &nvim->process_info);
+    if (!ok)
+    {
+        return false;
+    }
     AssignProcessToJobObject(job_object, nvim->process_info.hProcess);
 
     // Do the initial messages with nvim in sync
@@ -115,7 +119,7 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
     mpack_tree_parse(tree_reader);
     if (mpack_tree_error(tree_reader))
     {
-        return;
+        return false;
     }
     MPackMessageResult result = MPackExtractMessageResult(tree_reader);
     if (result.type == MPackMessageType::Response)
@@ -148,7 +152,7 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
     mpack_tree_parse(tree_reader);
     if (mpack_tree_error(tree_reader))
     {
-        return;
+        return false;
     }
     result = MPackExtractMessageResult(tree_reader);  // get the result just in case...
 
@@ -165,6 +169,7 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd)
         CreateThread(nullptr, 0, NvimMessageHandler, broker, 0, &_);
         CreateThread(nullptr, 0, NvimProcessMonitor, nvim, 0, &_);
     }
+    return true;
 }
 
 void NvimShutdown(Nvim *nvim)
