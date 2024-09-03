@@ -4,7 +4,7 @@
 struct Context {
 	bool start_maximized;
 	bool start_fullscreen;
-    bool disable_fullscreen;
+  bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -398,7 +398,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	bool start_maximized = false;
 	bool start_fullscreen = false;
 	bool disable_ligatures = false;
-    bool disable_fullscreen = false;
+  bool disable_fullscreen = false;
 	float linespace_factor = 1.0f;
 	int64_t start_rows = 0;
 	int64_t start_cols = 0;
@@ -409,8 +409,23 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	static constexpr const wchar_t *NVIM_CMD = L"nvim --embed";
 	size_t nvim_cmd_len = wcslen(NVIM_CMD);
-	wchar_t* nvim_cmd = static_cast<wchar_t *>(calloc(nvim_cmd_len + 1, sizeof(wchar_t)));
+	wchar_t *nvim_cmd = static_cast<wchar_t *>(calloc(nvim_cmd_len + 1, sizeof(wchar_t)));
 	wmemcpy_s(nvim_cmd, nvim_cmd_len + 1, NVIM_CMD, nvim_cmd_len + 1);
+
+	// Find explicitly provided nvim bin in case its given in arguments
+	for (int i = 1; i < n_args; ++i) {
+		if(!wcsncmp(cmd_line_args[i], L"--neovim-bin=", wcslen(L"--neovim-bin="))) {
+			free(nvim_cmd);
+
+			wchar_t *nvim_bin = &cmd_line_args[i][13];
+			size_t nvim_bin_len = wcslen(&cmd_line_args[i][13]);
+      nvim_cmd = static_cast<wchar_t *>(malloc(sizeof(wchar_t) * (1 + nvim_bin_len + wcslen(L"\" --embed") + 1)));
+			wcscpy_s(nvim_cmd, 1 + nvim_bin_len + wcslen(L"\" --embed") + 1, L"\"");
+			wcscat_s(nvim_cmd, 1 + nvim_bin_len + wcslen(L"\" --embed") + 1, nvim_bin);
+      wcscat_s(nvim_cmd, 1 + nvim_bin_len + wcslen(L"\" --embed") + 1, L"\" --embed");
+      nvim_cmd_len = wcslen(nvim_cmd);
+		}
+	}
 
 	// Skip argv[0]
 	for(int i = 1; i < n_args; ++i) {
@@ -448,6 +463,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 			wchar_t* end_ptr;
 			cursor_timeout_in_ms = wcstol(&cmd_line_args[i][17], &end_ptr, 10);
 		}
+		// Already processed
+		else if (!wcsncmp(cmd_line_args[i], L"--neovim-bin=", wcslen(L"--neovim-bin="))) {}
 		// Otherwise assume the argument is a filename to open
 		else {
 			// Otherwise assume switch is for nvim initialization

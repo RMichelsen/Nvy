@@ -25,6 +25,7 @@ Nvy can be started with the following flags:
 - `--disable-fullscreen` to disable toggling fullscreen with Alt+Enter
 - `--linespace-factor=<float>` to scale the line spacing by a floating point factor, e.g. `--linespace-factor=1.2`
 - `--cursor-timeout=<int>` to hide the cursor after some time (in ms) of being idle, e.g. `--cursor-timeout=2000`
+- `--neovim-bin=<path>` to provide path to nvim.exe, e.g. `--neovim-bin="C:\neovim\nvim-win64\bin\nvim.exe"`
 
 ## Extra Features
 
