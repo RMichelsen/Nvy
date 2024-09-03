@@ -21,28 +21,24 @@ static size_t ReadFromNvim(mpack_tree_t *tree, char *buffer, size_t count) {
 	return bytes_read;
 }
 
-struct NvimMsgBroker {
-	Nvim *nvim;
-	mpack_tree_t *tree;
-};
-
 DWORD WINAPI NvimMessageHandler(LPVOID param) {
-	NvimMsgBroker *broker = static_cast<NvimMsgBroker*>(param);
+	Nvim *nvim = static_cast<Nvim *>(param);
+	mpack_tree_t *tree = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
+	mpack_tree_init_stream(tree, ReadFromNvim, nvim->stdout_read, Megabytes(20), 1'048'576);
 
 	while (true) {
-		mpack_tree_parse(broker->tree);
-		if (mpack_tree_error(broker->tree) != mpack_ok) {
+		mpack_tree_parse(tree);
+		if (mpack_tree_error(tree) != mpack_ok) {
 			break;
 		}
 
 		// Blocking, dubious thread safety. Seems to work though...
-        SendMessage(broker->nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(broker->tree), 0);
+		SendMessage(nvim->hwnd, WM_NVIM_MESSAGE, reinterpret_cast<WPARAM>(tree), 0);
 	}
 
-	mpack_tree_destroy(broker->tree);
-	PostMessage(broker->nvim->hwnd, WM_DESTROY, 0, 0);
-	free(broker->tree);
-	free(broker);
+	mpack_tree_destroy(tree);
+	free(tree);
+	PostMessage(nvim->hwnd, WM_DESTROY, 0, 0);
 	return 0;
 }
 
@@ -77,15 +73,17 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 		.nLength = sizeof(SECURITY_ATTRIBUTES),
 		.bInheritHandle = true
 	};
-	CreatePipe(&nvim->stdin_read, &nvim->stdin_write, &sec_attribs, 0);
-	CreatePipe(&nvim->stdout_read, &nvim->stdout_write, &sec_attribs, 0);
+	HANDLE stdin_read, stdout_write, stderr_write;
+	CreatePipe(&stdin_read, &nvim->stdin_write, &sec_attribs, 0);
+	CreatePipe(&nvim->stdout_read, &stdout_write, &sec_attribs, 0);
+	CreatePipe(&nvim->stderr_read, &stderr_write, &sec_attribs, 0);
 
 	STARTUPINFO startup_info {
 		.cb = sizeof(STARTUPINFO),
 		.dwFlags = STARTF_USESTDHANDLES,
-		.hStdInput = nvim->stdin_read,
-		.hStdOutput = nvim->stdout_write,
-		.hStdError = nvim->stdout_write
+		.hStdInput = stdin_read,
+		.hStdOutput = stdout_write,
+		.hStdError = stderr_write
 	};
 
 	// wchar_t command_line[] = L"nvim --embed";
@@ -103,8 +101,17 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	);
 	AssignProcessToJobObject(job_object, nvim->process_info.hProcess);
 
-	// Do the initial messages with nvim in sync
+	// Close unneeded handles
+	CloseHandle(stdin_read);
+	CloseHandle(stdout_write);
+	CloseHandle(stderr_write);
+	CloseHandle(nvim->process_info.hThread);
 
+	// Start process monitor thread
+	DWORD _;
+	CreateThread( nullptr, 0, NvimProcessMonitor, nvim, 0, &_);
+
+	// Do the initial messages with nvim in sync
 	mpack_tree_t *tree_reader = static_cast<mpack_tree_t *>(malloc(sizeof(mpack_tree_t)));
 	mpack_tree_init_stream(tree_reader, ReadFromNvim, nvim->stdout_read, Megabytes(20), 1'048'576);
 
@@ -117,7 +124,9 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	mpack_start_array(&writer, 0);
 	mpack_finish_array(&writer);
 	size_t size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
+	if (!MPackSendData(nvim->stdin_write, data, size)) {
+		return;
+	}
 	mpack_tree_parse(tree_reader);
 	if (mpack_tree_error(tree_reader)) {
 		return;
@@ -138,7 +147,9 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	mpack_write_int(&writer, 1);
 	mpack_finish_array(&writer);
 	size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
+	if (!MPackSendData(nvim->stdin_write, data, size)) {
+		return;
+	}
 
 	// Setup neovim to send a blocking request so we can finalize seting up before
 	// buffer
@@ -148,37 +159,19 @@ void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd) {
 	mpack_write_cstr(&writer, "autocmd VimEnter * call rpcrequest(1, 'vimenter')");
 	mpack_finish_array(&writer);
 	size = MPackFinishMessage(&writer);
-	MPackSendData(nvim->stdin_write, data, size);
+	if (!MPackSendData(nvim->stdin_write, data, size)) {
+		return;
+	}
 	mpack_tree_parse(tree_reader);
 	if (mpack_tree_error(tree_reader)) {
 		return;
 	}
 	result = MPackExtractMessageResult(tree_reader); // get the result just in case...
 
-	// send the tree reader to the broker to be used by the stdout reader thread
-	NvimMsgBroker *broker = static_cast<NvimMsgBroker*>(malloc(sizeof(NvimMsgBroker)));
-	if (broker) {
-		broker->nvim = nvim;
-		broker->tree = tree_reader;
+	mpack_tree_destroy(tree_reader);
+	free(tree_reader);
 
-		DWORD _;
-		CreateThread(
-			nullptr,
-			0,
-			NvimMessageHandler,
-			broker,
-			0,
-			&_
-		);
-		CreateThread(
-			nullptr,
-			0,
-			NvimProcessMonitor,
-			nvim,
-			0,
-			&_
-		);
-	}
+	CreateThread(nullptr, 0, NvimMessageHandler, nvim, 0, &_);
 }
 
 void NvimShutdown(Nvim *nvim) {
@@ -186,10 +179,9 @@ void NvimShutdown(Nvim *nvim) {
 	GetExitCodeProcess(nvim->process_info.hProcess, &exit_code);
 
 	if(exit_code == STILL_ACTIVE) {
-		CloseHandle(nvim->stdin_read);
 		CloseHandle(nvim->stdin_write);
 		CloseHandle(nvim->stdout_read);
-		CloseHandle(nvim->stdout_write);
+		CloseHandle(nvim->stderr_read);
 		TerminateProcess(nvim->process_info.hProcess, 0);
 		CloseHandle(nvim->process_info.hProcess);
 		CloseHandle(nvim->process_info.hThread);
