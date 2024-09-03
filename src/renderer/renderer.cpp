@@ -789,7 +789,7 @@ void DrawCursor(Renderer *renderer) {
 	}
 }
 
-void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
+bool UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 	mpack_node_t grid_resize_params = mpack_node_array_at(grid_resize, 1);
 	int grid_cols = MPackIntFromArray(grid_resize_params, 1);
 	int grid_rows = MPackIntFromArray(grid_resize_params, 2);
@@ -815,7 +815,10 @@ void UpdateGridSize(Renderer *renderer, mpack_node_t grid_resize) {
 		renderer->wchar_buffer = static_cast<wchar_t *>(malloc(static_cast<size_t>(grid_cols * 2) * sizeof(wchar_t)));
 
 		renderer->grid_initialized = true;
+		return true;
 	}
+
+	return false;
 }
 
 void UpdateCursorPos(Renderer *renderer, mpack_node_t cursor_goto) {
@@ -1107,6 +1110,20 @@ void FinishDraw(Renderer *renderer) {
 	}
 }
 
+void RendererFlush(Renderer* renderer) {
+	StartDraw(renderer);
+	if (renderer->draws_invalidated) {
+		renderer->draws_invalidated = false;
+		DrawAllGridLines(renderer);
+	}
+
+	if (!renderer->ui_busy) {
+		DrawCursor(renderer);
+	}
+	DrawBorderRectangles(renderer);
+	FinishDraw(renderer);
+}
+
 void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximized) {
 	StartDraw(renderer);
 
@@ -1119,7 +1136,11 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximize
 			SetGuiOptions(renderer, redraw_command_arr);
 		}
 		if (MPackMatchString(redraw_command_name, "grid_resize")) {
-			UpdateGridSize(renderer, redraw_command_arr);
+			if (UpdateGridSize(renderer, redraw_command_arr))
+			{
+				PixelSize size = RendererGridToPixelSize(renderer, renderer->grid_rows, renderer->grid_cols);
+				SetWindowPos(renderer->hwnd, HWND_TOP, 0, 0, size.width, size.height, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+			}
 		}
 		if (MPackMatchString(redraw_command_name, "grid_clear")) {
 			ClearGrid(renderer);
@@ -1174,16 +1195,7 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximize
 				renderer->has_drawn = true;
 				ShowWindow(renderer->hwnd, start_maximized ? SW_MAXIMIZE : SW_SHOWDEFAULT);			}
 
-			if (renderer->draws_invalidated) {
-				renderer->draws_invalidated = false;
-				DrawAllGridLines(renderer);
-			}
-
-			if(!renderer->ui_busy) {
-				DrawCursor(renderer);
-			}
-			DrawBorderRectangles(renderer);
-			FinishDraw(renderer);
+			RendererFlush(renderer);
 		}
 	}
 }
