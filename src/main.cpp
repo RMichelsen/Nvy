@@ -474,7 +474,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	};
 
 	HWND hwnd = CreateWindowEx(
-		WS_EX_ACCEPTFILES,
+		WS_EX_ACCEPTFILES | WS_EX_NOREDIRECTIONBITMAP,
 		window_class_name,
 		window_title,
 		WS_OVERLAPPEDWINDOW,
