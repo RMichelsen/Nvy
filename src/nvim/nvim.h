@@ -46,10 +46,9 @@ struct Nvim {
 	Vec<NvimRequest> msg_id_to_method;
 
 	HWND hwnd;
-	HANDLE stdin_read;
 	HANDLE stdin_write;
 	HANDLE stdout_read;
-	HANDLE stdout_write;
+	HANDLE stderr_read;
 	PROCESS_INFORMATION process_info;
 	DWORD exit_code;
 };
