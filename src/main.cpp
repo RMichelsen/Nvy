@@ -16,6 +16,9 @@ struct Context {
 	UINT saved_dpi_scaling;
 	uint32_t saved_window_width;
 	uint32_t saved_window_height;
+	bool enable_cursor_timeout;
+	uint32_t cursor_timer_id;
+	uint32_t cursor_timeout_in_ms;
 	HKL hkl;
 };
 
@@ -221,6 +224,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 		}
 	} return 0;
 	case WM_MOUSEMOVE: {
+		if (context->enable_cursor_timeout) {
+			HCURSOR hCursor = LoadCursor(NULL, IDC_ARROW);
+			SetCursor(hCursor);
+			SetTimer(hwnd, context->cursor_timer_id, context->cursor_timeout_in_ms, NULL);
+		}
 		POINTS cursor_pos = MAKEPOINTS(lparam);
 		GridPoint grid_pos = RendererCursorToGridPoint(context->renderer, cursor_pos.x, cursor_pos.y);
 		if (context->cached_cursor_grid_pos.col != grid_pos.col || context->cached_cursor_grid_pos.row != grid_pos.row) {
@@ -236,6 +244,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 			} break;
 			}
 			context->cached_cursor_grid_pos = grid_pos;
+		}
+	} return 0;
+	case WM_TIMER: {
+		if (context->enable_cursor_timeout && wparam == 1) {
+			SetCursor(NULL);
 		}
 	} return 0;
 	case WM_LBUTTONDOWN:
@@ -391,6 +404,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	int64_t start_cols = 0;
 	int64_t start_pos_x = CW_USEDEFAULT;
 	int64_t start_pos_y = CW_USEDEFAULT;
+	bool enable_cursor_timeout = false;
+	uint32_t cursor_timeout_in_ms = 0;
 
 	static constexpr const wchar_t *NVIM_CMD = L"nvim --embed";
 	size_t nvim_cmd_len = wcslen(NVIM_CMD);
@@ -428,6 +443,12 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 				linespace_factor = factor;
 			}
 		}
+		else if (!wcsncmp(cmd_line_args[i], L"--cursor-timeout=", wcslen(L"--cursor-timeout="))) {
+			enable_cursor_timeout = true;
+			wchar_t* end_ptr;
+			cursor_timeout_in_ms = wcstol(&cmd_line_args[i][17], &end_ptr, 10);
+		}
+		// Otherwise assume the argument is a filename to open
 		else {
 			// Otherwise assume switch is for nvim initialization
 			const size_t arg_len = wcslen(cmd_line_args[i]) + 1 /* space */;
@@ -467,13 +488,17 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 
 	Nvim nvim {};
 	Renderer renderer {};
+	constexpr uint32_t cursor_timer_id = 1;
 	Context context {
 		.start_maximized = start_maximized,
 		.start_fullscreen = start_fullscreen,
         .disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
-		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) }
+		.saved_window_placement = WINDOWPLACEMENT { .length = sizeof(WINDOWPLACEMENT) },
+		.enable_cursor_timeout = enable_cursor_timeout,
+		.cursor_timer_id = cursor_timer_id,
+		.cursor_timeout_in_ms = cursor_timeout_in_ms
 	};
 
 	HWND hwnd = CreateWindowEx(
