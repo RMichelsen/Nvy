@@ -4,15 +4,15 @@ enum NvimRequest : uint8_t {
 	vim_get_api_info = 0,
 	nvim_input = 1,
 	nvim_input_mouse = 2,
-	nvim_eval = 3,
-	nvim_command = 4
+	nvim_command = 3,
+	nvim_get_option_value = 4
 };
 constexpr const char *NVIM_REQUEST_NAMES[] {
 	"nvim_get_api_info",
 	"nvim_input",
 	"nvim_input_mouse",
-	"nvim_eval",
-	"nvim_command"
+	"nvim_command",
+	"nvim_get_option_value"
 };
 enum NvimOutboundNotification : uint8_t {
 	nvim_ui_attach = 0,
@@ -56,8 +56,8 @@ struct Nvim {
 void NvimInitialize(Nvim *nvim, wchar_t *command_line, HWND hwnd);
 void NvimShutdown(Nvim *nvim);
 
-void NvimQueryConfig(Nvim *nvim);
-void NvimParseConfig(Nvim *nvim, mpack_node_t config_node, Vec<char> *guifont_out);
+void NvimGetOptionValue(Nvim *nvim, const char *option);
+void NvimParseOptionValueStr(Nvim *nvim, mpack_node_t value_node, Vec<char> *value_out);
 
 void NvimSendCommand(Nvim *nvim, const char *command);
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols);

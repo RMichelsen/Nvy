@@ -4,7 +4,9 @@
 struct Context {
 	bool start_maximized;
 	bool start_fullscreen;
-  bool disable_fullscreen;
+	int64_t start_rows;
+	int64_t start_cols;
+	bool disable_fullscreen;
 	HWND hwnd;
 	Nvim *nvim;
 	Renderer *renderer;
@@ -51,23 +53,21 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 	case MPackMessageType::Response: {
 		assert(result.response.msg_id <= context->nvim->next_msg_id);
 		switch (context->nvim->msg_id_to_method[result.response.msg_id]) {
-		case NvimRequest::nvim_eval: {
+		case NvimRequest::nvim_get_option_value: {
 			Vec<char> guifont_buffer;
-			NvimParseConfig(context->nvim, result.params, &guifont_buffer);
+			NvimParseOptionValueStr(context->nvim, result.params, &guifont_buffer);
 			if (!guifont_buffer.empty()) {
-				bool updated = RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
-				if(!updated) {
-					guifont_buffer[guifont_buffer.size() - 1] = '"';
-					guifont_buffer.push_back('\0');
-					const char *error = "echom \"Unknown font: ";
-					char *command = static_cast<char *>(malloc(strlen(error) + guifont_buffer.size()));
-					memcpy(command, error, strlen(error));
-					memcpy(command + strlen(error), guifont_buffer.data(), guifont_buffer.size());
-					NvimSendCommand(context->nvim, command);
-					free(command);
+				RendererUpdateGuiFont(context->renderer, guifont_buffer.data(), strlen(guifont_buffer.data()));
+
+				if (context->start_rows != 0 && context->start_cols != 0) {
+					// after user config is read, process --geometry resize for the current font.
+					// if user config also sets lines or columns, --geometry takes precedence.
+					PixelSize start_size = RendererGridToPixelSize(context->renderer, context->start_rows, context->start_cols);
+					SetWindowPos(context->hwnd, HWND_TOP, 0, 0, 
+						start_size.width, start_size.height, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
 				}
 			}
-        } break;
+		} break;
 		case NvimRequest::vim_get_api_info:
 		case NvimRequest::nvim_input:
 		case NvimRequest::nvim_input_mouse:
@@ -85,7 +85,7 @@ void ProcessMPackMessage(Context *context, mpack_tree_t *tree) {
 			// nvim has read user init file, we can now request info if we want
 			// like additional startup settings or something else
 			NvimSendResponse(context->nvim, result.request.msg_id);
-			NvimQueryConfig(context->nvim);
+			NvimGetOptionValue(context->nvim, "guifont");
 		}
 	} break;
 	}
@@ -511,6 +511,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	Context context {
 		.start_maximized = start_maximized,
 		.start_fullscreen = start_fullscreen,
+		.start_rows = start_rows,
+		.start_cols = start_cols,
         .disable_fullscreen = disable_fullscreen,
 		.nvim = &nvim,
 		.renderer = &renderer,
@@ -552,19 +554,10 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 	// Forceably update the window to prevent any frames where the window is blank. Windows API docs
 	// specify that SetWindowPos should be called with these arguments after SetWindowLong is called.
 	UINT window_flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED;
-	int window_w = 0, window_h = 0;
-
-	if (start_rows != 0 && start_cols != 0) {
-		PixelSize start_size = RendererGridToPixelSize(context.renderer,
-			start_rows, start_cols);
-		window_w = start_size.width;
-		window_h = start_size.height;
-		window_flags = window_flags & ~SWP_NOSIZE;
-	}
 	if (start_pos_x != CW_USEDEFAULT || start_pos_y != CW_USEDEFAULT) {
 		window_flags = window_flags & ~SWP_NOMOVE;
 	}
-	SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, window_w, window_h, window_flags);
+	SetWindowPos(hwnd, HWND_TOP, start_pos_x, start_pos_y, 0, 0, window_flags);
 
 	if (start_fullscreen) {
 		ToggleFullscreen(context.hwnd, &context);
