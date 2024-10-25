@@ -630,7 +630,7 @@ void NvimKillFocus(Nvim *nvim) {
 }
 void NvimQuit(Nvim *nvim)
 {
-	const char *quit_command = "qa";
+	const char *quit_command = "confirm qa";
 
 	char data[MAX_MPACK_OUTBOUND_MESSAGE_SIZE];
 	mpack_writer_t writer;
