@@ -475,14 +475,14 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev_instance, _
 				MessageBoxA(NULL, "ERROR: File path too long", "Nvy", MB_OK | MB_ICONERROR);
 				return 1;
 			}
-			size_t tmp_len = sizeof(wchar_t) * (nvim_cmd_len + arg_len + 4);
-			wchar_t *tmp = static_cast<wchar_t *>(realloc(nvim_cmd, tmp_len));
+			size_t tmp_len = nvim_cmd_len + arg_len + 4;
+			wchar_t *tmp = static_cast<wchar_t *>(realloc(nvim_cmd, tmp_len * sizeof(wchar_t)));
 			if (tmp) {
 				nvim_cmd = tmp;
 				nvim_cmd_len = tmp_len;
-				wcscat_s(nvim_cmd, tmp_len, L" \"");
-				wcscat_s(nvim_cmd, tmp_len,cmd_line_args[i]);
-				wcscat_s(nvim_cmd, tmp_len, L"\"");
+				wcscat_s(nvim_cmd, nvim_cmd_len, L" \"");
+				wcscat_s(nvim_cmd, nvim_cmd_len, cmd_line_args[i]);
+				wcscat_s(nvim_cmd, nvim_cmd_len, L"\"");
 			} else {
 				break; // not enough memory to continue
 			}

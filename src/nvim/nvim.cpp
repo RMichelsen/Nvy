@@ -178,14 +178,26 @@ void NvimShutdown(Nvim *nvim) {
 	DWORD exit_code;
 	GetExitCodeProcess(nvim->process_info.hProcess, &exit_code);
 
-	if(exit_code == STILL_ACTIVE) {
-		CloseHandle(nvim->stdin_write);
-		CloseHandle(nvim->stdout_read);
-		CloseHandle(nvim->stderr_read);
-		TerminateProcess(nvim->process_info.hProcess, 0);
-		CloseHandle(nvim->process_info.hProcess);
-		CloseHandle(nvim->process_info.hThread);
-	}
+	if (exit_code != STILL_ACTIVE)
+		return;
+
+	Sleep(20);
+	GetExitCodeProcess(nvim->process_info.hProcess, &exit_code);
+
+	if (exit_code != STILL_ACTIVE)
+		return;
+
+	// should never be STILL_ACTIVE here, but just in case
+	CloseHandle(nvim->stdin_write);
+	CloseHandle(nvim->stdout_read);
+	CloseHandle(nvim->stderr_read);
+
+	TerminateProcess(nvim->process_info.hProcess, 0);
+
+	CloseHandle(nvim->process_info.hProcess);
+	CloseHandle(nvim->process_info.hThread);
+
+	nvim->exit_code = 0; // nvim was forcefully terminated. Everything is fine.
 }
 
 void NvimSendUIAttach(Nvim *nvim, int grid_rows, int grid_cols) {
