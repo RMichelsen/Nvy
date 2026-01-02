@@ -1136,7 +1136,8 @@ void RendererRedraw(Renderer *renderer, mpack_node_t params, bool start_maximize
 			SetGuiOptions(renderer, redraw_command_arr);
 		}
 		if (MPackMatchString(redraw_command_name, "grid_resize")) {
-			if (UpdateGridSize(renderer, redraw_command_arr))
+			const bool is_fullscreen = !(GetWindowLong(renderer->hwnd, GWL_STYLE) & WS_OVERLAPPEDWINDOW);
+			if (UpdateGridSize(renderer, redraw_command_arr) && !is_fullscreen)
 			{
 				PixelSize size = RendererGridToPixelSize(renderer, renderer->grid_rows, renderer->grid_cols);
 				SetWindowPos(renderer->hwnd, HWND_TOP, 0, 0, size.width, size.height, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
