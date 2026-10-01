@@ -145,6 +145,7 @@ HRESULT GlyphRenderer::DrawGlyphRun(void *client_drawing_context, float baseline
 			} break;
 			}
 		}
+		SafeRelease(&glyph_run_enumerator);
 	}
 
 	return hr;
